@@ -66,6 +66,7 @@ from typing import Any
 
 from langsmith import trace as ls_trace
 
+from src.core.job_types import JOB_TYPE_UPSCALE
 from src.db.adapter import get_adapter
 from src.jobs.helpers.promote_is_final import promote_is_final_for_sheet
 from src.jobs.runner import JobContext, register
@@ -178,7 +179,7 @@ def _build_print_box_map(
     return out
 
 
-@register("remix_upscale")
+@register(JOB_TYPE_UPSCALE)
 async def handle(job: dict, ctx: JobContext) -> tuple[str, dict | None]:
     params = job.get("params") or {}
     remix_id: str = params["remix_id"]

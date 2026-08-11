@@ -2,12 +2,10 @@
 
 Ported from image-api `src/routers/jobs/enqueue_remix_mix_swap.py`. Swaps the
 WHOLE lineup of one mix entry (`remixes.mixes[]`) across every crop sheet via the
-multi-target AI primitive `run_swap_mix_sheet`. The 201 success + 200 skipped
-bodies are byte-identical to image-api.
-
-⚠️ DEDUP DIVERGENCE (Phase-06 plan Insight 5 + Tiêu chí): mix-swap dedup returns
-**409 JOB_ALREADY_ACTIVE** here (image-api returned 200 deduped). The plan groups
-mix-swap with the 3 detect jobs (all 409). Dedup key = `remix_id`.
+multi-target AI primitive `run_swap_mix_sheet`. The 201 success + 200 skipped +
+200 dedup bodies are byte-identical to image-api (spec jobs/05 §Dedup — the
+transient Phase-06 409 divergence was reverted 2026-08-11 per review; only the
+detect jobs 12/13 keep 409, matching image-api). Dedup key = `remix_id`.
 
 Service deltas vs image-api (same as sprite-swap): editor-session Bearer auth (no
 X-API-Key), existence check instead of owner lookup, `admin_ref`/`sid` stamped
@@ -17,7 +15,7 @@ Returns:
   - 201 + success data on enqueue.
   - 200 + skipped data when no sheet is in scope (no_crop_sheets /
     all_sheets_already_swapped) — no row created.
-  - 409 JOB_ALREADY_ACTIVE when an active mix-swap job already exists for this remix.
+  - 200 + dedup data when an active mix-swap job already exists for this remix.
 """
 
 from __future__ import annotations
@@ -170,8 +168,8 @@ async def enqueue_remix_mix_swap_endpoint(
             },
         }
 
-    # 5. Dedup — any active mix-swap job for this remix → 409 (Phase-06 plan
-    #    divergence from image-api's 200; dedup key = remix_id).
+    # 5. Dedup — any active mix-swap job for this remix → 200 deduped (image-api
+    #    parity, spec jobs/05 §Dedup Response; dedup key = remix_id).
     try:
         existing = await adapter.find_active_job(UUID(remix_id), JOB_TYPE_MIX_SWAP)
     except Exception as exc:  # noqa: BLE001
@@ -179,18 +177,17 @@ async def enqueue_remix_mix_swap_endpoint(
         raise error_response(500, "INTERNAL_ERROR", "dedup lookup failed") from exc
 
     if existing:
-        raise error_response(
-            409,
-            "JOB_ALREADY_ACTIVE",
-            "a mix-swap job is already active for this remix",
-            details={
+        return {
+            "success": True,
+            "data": {
+                "deduped": True,
                 "job_id": str(existing["id"]),
                 "status": existing["status"],
                 "type": existing.get("type"),
                 "remix_id": remix_id,
-                "batch_id": (existing.get("params") or {}).get("batch_id"),
+                "active_swap_key": (existing.get("params") or {}).get("batch_id"),
             },
-        )
+        }
 
     # 6. Enqueue via jobs lib (user_id forced + params.source stamped inside).
     try:
@@ -224,8 +221,8 @@ async def enqueue_remix_mix_swap_endpoint(
 
     audit(
         ctx,
-        "POST /api/jobs/remix/{remix_id}/mix-swap",
-        remix_id,
+        endpoint=f"jobs.{JOB_TYPE_MIX_SWAP}",
+        resource_id=remix_id,
         job_id=str(job["id"]),
         type=JOB_TYPE_MIX_SWAP,
     )

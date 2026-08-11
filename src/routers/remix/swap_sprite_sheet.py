@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from src.auth.editor_session import EditorSessionContext, require_editor_session
 from src.models.requests.swap_sprite_sheet import (
     SpriteGeminiPayloadBytesMeta,
     SpriteSheetDimensionsMeta,
@@ -43,6 +44,7 @@ router = APIRouter()
 )
 async def swap_sprite_sheet(
     body: SwapSpriteSheetCoreRequest,
+    session: EditorSessionContext = Depends(require_editor_session),
 ) -> SwapSpriteSheetResponse:
     t0 = time.monotonic()
     # Force return_bytes False on the public body — it is an in-process-only seam
@@ -73,9 +75,15 @@ async def swap_sprite_sheet(
 
     try:
         # AI-usage attribution (Phase 05): optional `remixId` → remix cost bucket
-        # (discriminator). None → unattributed (remix billing also flows via jobs 02/05).
+        # (discriminator). admin_ref/sid from the editor session ride into
+        # `request.audit` (spec 08 §Delta — every ported endpoint stamps them).
         result = await run_swap_sprite_sheet(
-            body, ai_context=AiCallContext(remix_id=body.remixId)
+            body,
+            ai_context=AiCallContext(
+                remix_id=body.remixId,
+                admin_ref=session.admin_ref,
+                sid=session.sid,
+            ),
         )
     except RemixDomainError:
         raise

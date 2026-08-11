@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.auth.editor_session import EditorSessionContext, require_editor_session
 
 from src.models.requests.detect_mix_defects import (
     DetectMixDefectsData,
@@ -38,6 +40,7 @@ router = APIRouter()
 @router.post("/detect-mix-defects", response_model=DetectMixDefectsResponse)
 async def detect_mix_defects(
     req: DetectMixDefectsRequest,
+    session: EditorSessionContext = Depends(require_editor_session),
 ) -> DetectMixDefectsResponse:
     # PII discipline: counts only — never URLs / human data.
     logger.info(
@@ -46,7 +49,10 @@ async def detect_mix_defects(
     )
     # AI-usage attribution (Phase 05): optional remixId → remix cost bucket.
     result = await run_detect_mix_defects(
-        req, ai_context=AiCallContext(remix_id=req.remixId)
+        req,
+        ai_context=AiCallContext(
+            remix_id=req.remixId, admin_ref=session.admin_ref, sid=session.sid
+        ),
     )
     logger.info(
         "detect_mix_defects_ok defects=%d has_old=%s truncated=%s",

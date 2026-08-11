@@ -47,6 +47,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from src.core.job_types import JOB_TYPE_RMBG
 from src.db.adapter import get_adapter
 from src.jobs.helpers.promote_is_final import promote_is_final_for_sheet
 from src.jobs.runner import JobContext, register
@@ -119,7 +120,7 @@ def _build_result(
     }
 
 
-@register("remix_rmbg")
+@register(JOB_TYPE_RMBG)
 async def handle(job: dict, ctx: JobContext) -> tuple[str, dict | None]:
     params = job.get("params") or {}
     remix_id: str = params["remix_id"]

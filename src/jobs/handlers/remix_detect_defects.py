@@ -47,6 +47,7 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from src.core.job_types import JOB_TYPE_DETECT_DEFECTS
 from src.db.adapter import get_adapter
 from src.jobs.runner import JobContext, register
 from src.models.jobs.remix_detect_defects import MAX_RESULT_ERRORS
@@ -208,7 +209,7 @@ def _error_code(exc: Exception) -> str:
 # ─── handler ─────────────────────────────────────────────────────────────────
 
 
-@register("remix_detect_defects")
+@register(JOB_TYPE_DETECT_DEFECTS)
 async def handle(job: dict, ctx: JobContext) -> tuple[str, dict | None]:
     params = job.get("params") or {}
     remix_id: str = params["remix_id"]

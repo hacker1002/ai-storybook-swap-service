@@ -243,8 +243,8 @@ async def enqueue_remix_sprite_swap_endpoint(
 
     audit(
         ctx,
-        "POST /api/jobs/remix/{remix_id}/sprite-swap",
-        remix_id,
+        endpoint=f"jobs.{JOB_TYPE_SPRITE_SWAP}",
+        resource_id=remix_id,
         job_id=str(job["id"]),
         type=JOB_TYPE_SPRITE_SWAP,
     )

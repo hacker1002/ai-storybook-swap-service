@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.auth.editor_session import EditorSessionContext, require_editor_session
 
 from src.models.requests.detect_swap_defects import (
     DetectSwapDefectsData,
@@ -38,6 +40,7 @@ router = APIRouter()
 @router.post("/detect-swap-defects", response_model=DetectSwapDefectsResponse)
 async def detect_swap_defects(
     req: DetectSwapDefectsRequest,
+    session: EditorSessionContext = Depends(require_editor_session),
 ) -> DetectSwapDefectsResponse:
     # PII discipline: counts only — never URLs / human data.
     logger.info(
@@ -46,7 +49,10 @@ async def detect_swap_defects(
     )
     # AI-usage attribution (Phase 05): optional remixId → remix cost bucket.
     result = await run_detect_swap_defects(
-        req, ai_context=AiCallContext(remix_id=req.remixId)
+        req,
+        ai_context=AiCallContext(
+            remix_id=req.remixId, admin_ref=session.admin_ref, sid=session.sid
+        ),
     )
     logger.info(
         "detect_swap_defects_ok defects=%d truncated=%s",

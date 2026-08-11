@@ -16,7 +16,7 @@ def _seed_job(fake, **over):
         "result": None,
         "error_message": "boom",
         "cancel_requested": False,
-        "params": {"remix_id": "r1", "batch_id": "b1"},
+        "params": {"remix_id": "r1", "batch_id": "b1", "admin_ref": "admin-1", "sid": "sid-1"},
         "book_id": uuid.uuid4(),
         "current_step": 2,
         "total_steps": 5,
@@ -38,6 +38,8 @@ def test_status_jobs_and_missing(client, fake_adapter, auth_headers):
     entry = data["jobs"][0]
     assert entry["error"] == "boom"                 # error_message -> error
     assert entry["params"]["batch_id"] == "b1"      # additive field present
+    # service-stamped audit keys are STRIPPED from the params projection
+    assert "admin_ref" not in entry["params"] and "sid" not in entry["params"]
     assert entry["current_step"] == 2 and entry["total_steps"] == 5
 
 

@@ -19,7 +19,9 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.auth.editor_session import EditorSessionContext, require_editor_session
 
 from src.models.requests.swap_mix_crop_sheet import (
     MixGeminiPayloadBytesMeta,
@@ -53,6 +55,7 @@ router = APIRouter()
 )
 async def swap_mix_crop_sheet(
     body: SwapMixSheetCoreRequest,
+    session: EditorSessionContext = Depends(require_editor_session),
 ) -> SwapMixCropSheetResponse:
     t0 = time.monotonic()
     n_crops = len(body.crops)
@@ -79,9 +82,15 @@ async def swap_mix_crop_sheet(
 
     try:
         # AI-usage attribution (Phase 05): optional `remixId` → remix cost bucket
-        # (discriminator). None → unattributed (remix billing also flows via jobs 04/…).
+        # (discriminator). admin_ref/sid from the editor session ride into
+        # `request.audit` (spec 08 §Delta — every ported endpoint stamps them).
         result = await run_swap_mix_sheet(
-            body, ai_context=AiCallContext(remix_id=body.remixId)
+            body,
+            ai_context=AiCallContext(
+                remix_id=body.remixId,
+                admin_ref=session.admin_ref,
+                sid=session.sid,
+            ),
         )
     except RemixDomainError:
         raise

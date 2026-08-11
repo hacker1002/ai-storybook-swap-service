@@ -1,8 +1,8 @@
 """Unit tests for the mix-swap enqueue route (P3b Phase 06).
 
 Endpoint FUNCTION tested directly with `FakeAppDbAdapter` + `AsyncMock` enqueue +
-a stub `resolve_mix_swap_context`. Covers: happy 201 shape, ⚡409 dedup (service
-divergence — image-api returned 200), 404 unknown remix.
+a stub `resolve_mix_swap_context`. Covers: happy 201 shape, 200 dedup (image-api
+parity — the Phase-06 409 divergence was reverted 260811), 404 unknown remix.
 """
 
 from __future__ import annotations
@@ -95,10 +95,10 @@ def test_happy_enqueue_201_shape(fake, monkeypatch):
     assert m.await_args.kwargs["params"]["admin_ref"] == "admin-1"
 
 
-def test_dedup_returns_409(fake, monkeypatch):
+def test_dedup_returns_200_deduped(fake, monkeypatch):
     remix_id, batch_id = _seed_remix(fake)
     _stub_ctx(monkeypatch)
-    _mock_enqueue(monkeypatch)
+    m = _mock_enqueue(monkeypatch)
     fake.jobs["j1"] = {
         "id": "j1",
         "type": JOB_TYPE_MIX_SWAP,
@@ -107,11 +107,20 @@ def test_dedup_returns_409(fake, monkeypatch):
     }
 
     body = RemixMixSwapEnqueueRequest(batch_id=batch_id)
-    with pytest.raises(HTTPException) as exc:
-        _run(route_mod.enqueue_remix_mix_swap_endpoint(remix_id, body, _CTX))
-    # ⚡Service divergence: mix-swap dedup ⇒ 409 JOB_ALREADY_ACTIVE.
-    assert exc.value.status_code == 409
-    assert exc.value.detail["error"]["code"] == "JOB_ALREADY_ACTIVE"
+    resp = _run(route_mod.enqueue_remix_mix_swap_endpoint(remix_id, body, _CTX))
+    # Image-api parity (spec jobs/05 §Dedup Response) — no new row created.
+    assert resp == {
+        "success": True,
+        "data": {
+            "deduped": True,
+            "job_id": "j1",
+            "status": "running",
+            "type": JOB_TYPE_MIX_SWAP,
+            "remix_id": remix_id,
+            "active_swap_key": batch_id,
+        },
+    }
+    m.assert_not_awaited()
 
 
 def test_unknown_remix_404(fake, monkeypatch):

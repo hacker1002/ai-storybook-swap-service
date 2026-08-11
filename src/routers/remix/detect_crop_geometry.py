@@ -17,7 +17,9 @@ router-group level (`src/routers/remix/router.py`), NOT `X-API-Key`.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from src.auth.editor_session import EditorSessionContext, require_editor_session
 
 from src.models.requests.detect_crop_geometry import (
     DetectCropGeometryData,
@@ -34,6 +36,7 @@ router = APIRouter()
 @router.post("/detect-crop-geometry", response_model=DetectCropGeometryResponse)
 async def detect_crop_geometry(
     req: DetectCropGeometryRequest,
+    session: EditorSessionContext = Depends(require_editor_session),
 ) -> DetectCropGeometryResponse:
     dims = req.original_sheet_dimensions
 
@@ -62,7 +65,10 @@ async def detect_crop_geometry(
 
     # AI-usage attribution (Phase 05): optional remixId → remix cost bucket.
     result = await run_detect_crop_geometry(
-        req, ai_context=AiCallContext(remix_id=req.remixId)
+        req,
+        ai_context=AiCallContext(
+            remix_id=req.remixId, admin_ref=session.admin_ref, sid=session.sid
+        ),
     )
     return DetectCropGeometryResponse(
         success=True,

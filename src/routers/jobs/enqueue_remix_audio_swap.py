@@ -166,8 +166,8 @@ async def enqueue_remix_audio_swap_endpoint(
 
     audit(
         ctx,
-        "POST /api/jobs/remix/{remix_id}/audio-swap",
-        remix_id,
+        endpoint=f"jobs.{JOB_TYPE_AUDIO_SWAP}",
+        resource_id=remix_id,
         job_id=str(job["id"]),
         type=JOB_TYPE_AUDIO_SWAP,
     )
