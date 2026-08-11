@@ -44,7 +44,19 @@ curl 'http://localhost:8100/health?db=1'
 
 ```bash
 uv run pytest tests/ -q                # unit (fake adapter, no DB) — must be green FIRST
-./test-scripts/test-auth-verify.sh     # live integration (needs server + local DB)
+
+# Live integration — preconditions:
+#   1. `uv sync` done (else `uvicorn` won't spawn on a fresh checkout)
+#   2. server up on :8100 + local Postgres reachable
+#   3. REMIX_EDITOR_TOKEN_SECRET matches the running server, and fixtures/local-ids.env
+#      seeded with a real BOOK_ID + SNAPSHOT_ID (JOB_ID optional)
+# An exported REMIX_EDITOR_TOKEN_SECRET overrides .env (pydantic env-var precedence),
+# so force a match on both sides in one shot:
+export REMIX_EDITOR_TOKEN_SECRET=dev-remix-editor-secret-change-me
+uv run python -m uvicorn src.main:app --port 8100 &   # APP_DB_URL still read from .env
+
+./test-scripts/run-all.sh              # all specs 00–07 in dependency order (create seeds REMIX_ID)
+./test-scripts/test-auth-verify.sh     # or a single script standalone
 ```
 
 ## Database access
