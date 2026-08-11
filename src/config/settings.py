@@ -46,6 +46,16 @@ class Settings(BaseSettings):
     # --- Auth (Phase 03) ----------------------------------------------------
     editor_token_leeway_seconds: int = 30
 
+    # --- Dev mint (spec 10 — DEV ONLY stand-in for the Admin App backend mint) ---
+    # Default OFF: the /api/dev router is NOT registered unless this is true, so a
+    # prod deploy without the flag has no mint surface at all. NEVER enable in prod.
+    dev_mint_enabled: bool = False
+    # Gate key for POST /api/dev/mint-editor-token (X-Dev-Mint-Key header). A
+    # secret in its own right within a dev instance (leaking it = arbitrary admin
+    # sessions there). MUST NOT reuse/derive from remix_editor_token_secret.
+    # Required (fail-fast at boot) when dev_mint_enabled.
+    dev_mint_key: str = ""
+
     # --- Request / CORS -----------------------------------------------------
     # 20MB body cap for POST/PATCH (spec 04/05 payload-bomb guard).
     request_body_max_bytes: int = 20 * 1024 * 1024

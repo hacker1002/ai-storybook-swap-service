@@ -14,6 +14,12 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | Reaper | Scoped `params.source = 'remix-swap-service'` (image-api không scope) | Bảng `background_jobs` shared — không reap job của service khác |
 | `GET /api/jobs/status` | Endpoint MỚI (image-api không có — editor dùng realtime); `params` projection strip `admin_ref`/`sid` | Spec 07; 429 RATE_LIMITED deferred (note trong spec 07) |
 
+## 2026-08-11 — dev mint endpoint (spec 10)
+
+- **`POST /api/dev/mint-editor-token`** — flag-gated DEV stand-in cho Admin App backend mint (spec `service/remix-swap-service/10-dev-mint-token.md`). Router `/api/dev` chỉ đăng ký khi `DEV_MINT_ENABLED=true` (default OFF → prod không có mint surface); boot fail-fast nếu enabled mà thiếu `DEV_MINT_KEY`. Gate = header `X-Dev-Mint-Key` (constant-time), 401 `DEV_KEY_INVALID` không phân biệt thiếu/sai. Chỉ mint token HỢP LỆ (`aud/role/alg` cố định, ttl clamp [60,3600], sid tự sinh `dev-<uuid4>`); negative tokens vẫn là việc của CLI.
+- Signer `mint_token` chuyển `scripts/mint_dev_editor_token.py` → `src/auth/dev_token_mint.py` (1 signer duy nhất — CLI/route/pytest cùng import; module settings-free nên CLI vẫn chạy standalone không cần env).
+- Env mới: `DEV_MINT_ENABLED`, `DEV_MINT_KEY` (xem `.env.example`).
+
 ## 2026-08-11 — review compliance fixes (post-P3c)
 
 - **Mix-swap dedup REVERT về 200 `{deduped:true, active_swap_key}`** (parity image-api / spec jobs/05) — bỏ divergence 409 tạm của Phase-06. Detect-mix (12) / detect-rmbg (13) giữ 409 = parity image-api, KHÔNG phải divergence.

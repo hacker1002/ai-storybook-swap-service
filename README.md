@@ -62,6 +62,10 @@ uv run python scripts/mint_dev_editor_token.py            # valid admin token
 uv run python scripts/mint_dev_editor_token.py --expired  # negative-path token
 ```
 
+HTTP variant (spec 10 — for the sub-app FE dev flow): `POST /api/dev/mint-editor-token`,
+registered ONLY when `DEV_MINT_ENABLED=true` + `DEV_MINT_KEY` set (gate header
+`X-Dev-Mint-Key`). Mints valid tokens only; DEV ONLY, never enable in production.
+
 ## Deliberate Divergences from image-api
 
 Unlike `ai-storybook-image-api` (which this is a fork of), the Remix Swap Service intentionally diverges:

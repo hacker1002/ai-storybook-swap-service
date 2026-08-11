@@ -167,6 +167,16 @@ app.include_router(remix_router)
 app.include_router(retouch_router)
 app.include_router(image_router)
 app.include_router(provenance_router)
+# Spec 10 — DEV-only mint stand-in for the Admin App backend. Registered ONLY when
+# the flag is on: a default deploy has NO /api/dev/* surface (plain 404). Fail-fast
+# here (import time = uvicorn boot) so "enabled but ungated" cannot exist.
+if settings.dev_mint_enabled:
+    if not settings.dev_mint_key:
+        raise RuntimeError("DEV_MINT_ENABLED=true requires DEV_MINT_KEY (dev-only gate key)")
+    from src.routers.dev.router import router as dev_router  # noqa: PLC0415 — conditional dev-only import
+
+    app.include_router(dev_router)
+    logger.warning("dev_mint_router_registered — DEV ONLY, never enable in production")
 # Registered AFTER register_exception_handlers so these type-specific handlers win
 # precedence over the catch-all Exception handler (ported routes keep image-api's
 # own error envelope, NOT the /api/editor/* {success,error} shape).
