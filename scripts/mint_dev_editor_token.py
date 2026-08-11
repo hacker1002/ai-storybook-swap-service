@@ -2,12 +2,10 @@
 """DEV ONLY — mint an editor-session JWT for local testing.
 
 The real editor-session token is minted by the **Admin App backend** (P2), which
-does not exist yet. This CLI is a local stand-in so the service (which only
-VERIFIES) can be exercised. The signer lives in `src/auth/dev_token_mint.py`
-(single signer — also behind the flag-gated `POST /api/dev/mint-editor-token`,
-spec 10, and imported by the pytest suite). This script stays the tool for
-DELIBERATELY-INVALID tokens (wrong aud/role/alg/expired) — the API route only
-mints valid ones.
+does not exist yet. This script is a local stand-in so the service (which only
+VERIFIES) can be exercised. It lives in `scripts/` (outside `src/`) on purpose — it
+is NEVER part of the service. The `mint_token` helper is also imported by the
+pytest suite (DRY: one signer, not a copy).
 
 Usage:
     uv run python scripts/mint_dev_editor_token.py [flags]   -> prints token to stdout
@@ -29,16 +27,39 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from pathlib import Path
+import time
 
-# Standalone-run support: `python scripts/mint_dev_editor_token.py` puts scripts/
-# (not the repo root) on sys.path — add the root so `src.*` resolves. The signer
-# module is settings-free, so no env (APP_DB_URL, ...) is needed to import it.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import jwt
 
-from src.auth.dev_token_mint import mint_token  # noqa: E402  (re-exported for pytest)
 
-__all__ = ["mint_token"]
+def mint_token(
+    *,
+    secret: str,
+    admin_ref: str = "dev-admin-001",
+    sid: str = "dev-session-001",
+    consumer: str | None = "dev-script",
+    ttl: int = 900,
+    aud: str = "remix-editor",
+    role: str = "admin",
+    alg: str = "HS256",
+    expired: bool = False,
+) -> str:
+    now = int(time.time())
+    exp = now - 60 if expired else now + ttl
+    claims: dict = {
+        "aud": aud,
+        "role": role,
+        "admin_ref": admin_ref,
+        "sid": sid,
+        "iat": now,
+        "exp": exp,
+    }
+    if consumer is not None:
+        claims["consumer"] = consumer
+    if alg == "none":
+        # Unsigned token — must be rejected by the verifier (alg-confusion test).
+        return jwt.encode(claims, key=None, algorithm="none")  # type: ignore[arg-type]
+    return jwt.encode(claims, secret, algorithm=alg)
 
 
 def _main() -> int:
