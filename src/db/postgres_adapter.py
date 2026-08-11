@@ -279,6 +279,19 @@ class PostgresAppDbAdapter:
         async with self._pool.acquire() as conn:
             await conn.execute(sql, *[row[c] for c in cols])
 
+    async def get_ai_log(self, ai_request_id: UUID) -> dict | None:
+        """One `ai_service_logs` row by id (P3c provenance). WHITELIST columns only —
+        `request` is read for its `ref_files[]` key and never echoed. JSONB `request`
+        is already dict-decoded by the pool codec."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, operation, provider, model, status, created_at, "
+                "book_id, snapshot_id, remix_id, request "
+                "FROM ai_service_logs WHERE id = $1",
+                ai_request_id,
+            )
+        return dict(row) if row else None
+
 
 def _rowcount(command_tag: str) -> int:
     """Parse asyncpg's command tag (e.g. 'UPDATE 1', 'DELETE 0') into an int."""

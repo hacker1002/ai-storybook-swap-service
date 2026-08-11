@@ -10,9 +10,16 @@ remove-bg call, `return_bytes=True`) and by `services/replicate_client.run_remov
 
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, model_validator
+
+from src.models.requests._attribution import RemixId, SnapshotId
+from src.services.resource_persist import SaveResourceDirective
 
 __all__ = [
+    "ImageRemoveBgParams",
+    "ImageRemoveBgData",
+    "ImageRemoveBgMeta",
+    "ImageRemoveBgResponse",
     "ImageRemoveBgRequest",
     "ImageRemoveBgCoreResult",
     "BRIA_REMOVE_BG_MODEL",
@@ -26,6 +33,52 @@ REPLICATE_TIMEOUT_S: float = 120.0
 
 # `#RGB` shorthand or `#RRGGBB`. Validated only when backgroundColor is non-null.
 HEX_COLOR_REGEX = r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+
+
+# --- HTTP layer models (P3c — the remove-bg tab of the remix sub-app) ------
+
+
+class ImageRemoveBgParams(BaseModel):
+    """Public HTTP body — URL-only contract + optional model selection. Ported
+    VERBATIM from image-api (byte-identical to the shared FE client)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    imageUrl: HttpUrl
+    preserveAlpha: bool | None = True
+    backgroundColor: Annotated[str, StringConstraints(pattern=HEX_COLOR_REGEX)] | None = None
+    # Optional rmbg model; None → BRIA default. Validated against the `rmbg`
+    # allowlist at the endpoint BEFORE binding (public-bound guard) → 422.
+    model: Optional[str] = None
+    # Attribution (dual-context — remove-bg tab mounts in EditImageModal for both
+    # book + remix). Router stamps ONLY the winner.
+    snapshotId: SnapshotId | None = None
+    remixId: RemixId | None = None
+    # Opt-in auto-persist (no-op parity seam in this service). Absent → no-op.
+    saveResource: SaveResourceDirective | None = None
+
+
+class ImageRemoveBgData(BaseModel):
+    imageUrl: str
+    storagePath: str
+    aiRequestId: str | None = None
+    media_url: str | None = None
+    saved: bool | None = None
+    snapshotId: str | None = None
+    saveError: str | None = None
+
+
+class ImageRemoveBgMeta(BaseModel):
+    processingTime: int | None = None
+    mimeType: str | None = "image/png"
+    replicatePredictionId: str | None = None
+    backgroundColor: str | None = None
+
+
+class ImageRemoveBgResponse(BaseModel):
+    success: bool
+    data: ImageRemoveBgData
+    meta: ImageRemoveBgMeta | None = None
 
 
 # --- Core layer (framework-agnostic, no camelCase alias) ------------------

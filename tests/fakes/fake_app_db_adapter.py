@@ -28,6 +28,8 @@ class FakeAppDbAdapter:
         # `fake.prompt_templates[name] = {...}` directly (the generic `seed()` helper
         # keys dicts by `id`, which does not apply here).
         self.prompt_templates: dict[str, dict] = {}
+        # P3c provenance — keyed by ai_service_logs.id; seed via `seed("ai_logs", [...])`.
+        self.ai_logs: dict[str, dict] = {}
         self._fail: dict[str, Exception] = {}
 
     # ---- scripting helpers ----
@@ -194,6 +196,10 @@ class FakeAppDbAdapter:
 
     async def insert_ai_log(self, row: dict) -> None:
         return None
+
+    async def get_ai_log(self, ai_request_id: UUID) -> dict | None:
+        self._maybe_fail("get_ai_log")
+        return self.ai_logs.get(str(ai_request_id))
 
     # ---- prompt templates ----
     async def get_prompt_template(self, key: str) -> dict | None:

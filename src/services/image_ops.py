@@ -145,6 +145,41 @@ def flatten_on_color(data: bytes, hex_color: str) -> bytes:
     return buf.getvalue()
 
 
+# AspectRatio enum values (portrait→landscape), ported from image-api
+# `models/requests/normalize_ratio.RATIO_VALUES`. Used by the edit-object region
+# aspect guard (nearest_aspect_ratio). Only the values needed by P3c are ported.
+RATIO_VALUES: list[tuple[str, float]] = [
+    ("9:16", 9 / 16),
+    ("2:3", 2 / 3),
+    ("3:4", 3 / 4),
+    ("4:5", 4 / 5),
+    ("1:1", 1.0),
+    ("5:4", 5 / 4),
+    ("4:3", 4 / 3),
+    ("3:2", 3 / 2),
+    ("16:9", 16 / 9),
+    ("21:9", 21 / 9),
+]
+
+
+def nearest_aspect_ratio(w: int, h: int) -> str:
+    """Return the whitelist AspectRatio label NEAREST to (w, h) by relative error.
+
+    Ported VERBATIM from image-api `image_ops.nearest_aspect_ratio` — a symmetric
+    argmin over `|value - src| / src`. Used by the edit-object region aspect guard to
+    detect a region-annotation whose source ratio doesn't land on a supported enum.
+    Strict `<` keeps the first enum on a tie (RATIO_VALUES is sorted portrait→
+    landscape). Caller guarantees h > 0 (source decoded to valid dims before calling).
+    """
+    src_ratio = w / h
+    best_label, best_err = RATIO_VALUES[0][0], float("inf")
+    for label, value in RATIO_VALUES:
+        err = abs(value - src_ratio) / src_ratio
+        if err < best_err:
+            best_err, best_label = err, label
+    return best_label
+
+
 # Re-export for callers
 __all__ = [
     "composite_with_mask",
@@ -153,4 +188,6 @@ __all__ = [
     "ensure_png",
     "hex_to_rgba",
     "flatten_on_color",
+    "nearest_aspect_ratio",
+    "RATIO_VALUES",
 ]

@@ -1,16 +1,17 @@
-"""In-process `image_remove_bg_core` — Bria/851-labs remove-background (P3b).
+"""`image_remove_bg_core` + public HTTP route — Bria/851-labs remove-background.
 
-Ported from `ai-storybook-image-api/src/routers/retouch/image_remove_bg.py` — the
-CORE ONLY (`image_remove_bg_core` + `_decode_base64`). The public HTTP endpoint
-(`@router.post`), its `resolve_model_params` pre-check, and the opt-in
-`save_generated_resource` wiring are NOT ported — this service mounts no
-`/api/retouch/*` route; the core is reached ONLY in-process by the `remix_rmbg`
-stage job (always `return_bytes=True`).
+CORE (`image_remove_bg_core` + `_decode_base64`) ported from image-api in P3b for
+the in-process `remix_rmbg` stage job (always `return_bytes=True`). P3c ADDS the
+public HTTP endpoint (`@router.post("/image-remove-bg")`) — the remix sub-app's
+remove-bg tab calls it (URL-only public contract + `resolve_model_params` allowlist
+pre-check + opt-in `save_generated_resource` no-op seam).
+
+AUTH DELTA vs image-api: gated by the editor-session Bearer at the router group
+level (NOT X-API-Key); the handler reads the session ctx for AI-usage audit.
 
 Seam parity: `sb`/Storage/Replicate go through this service's adapters
 (`get_storage` via `src.services.storage`, `run_remove_bg`). Every failure raises
-via `error_response` (HTTPException) exactly as image-api; the `remix_rmbg` handler
-catches it per-sheet (`RMBG_FAILED`).
+via `error_response` (HTTPException) exactly as image-api.
 """
 
 import asyncio
@@ -19,14 +20,20 @@ import binascii
 import logging
 import time
 
-from fastapi import HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from PIL import UnidentifiedImageError
 
+from src.auth.editor_session import EditorSessionContext, require_editor_session
+from src.jobs.model_registry import resolve_model_params
 from src.models.requests.image_remove_bg import (
     BRIA_REMOVE_BG_MODEL,
     REPLICATE_TIMEOUT_S,
     ImageRemoveBgCoreResult,
+    ImageRemoveBgData,
+    ImageRemoveBgMeta,
+    ImageRemoveBgParams,
     ImageRemoveBgRequest,
+    ImageRemoveBgResponse,
 )
 from src.routers._shared.deps import error_response, url_host
 from src.services import ssrf_guard
@@ -34,10 +41,18 @@ from src.services.ai_usage import AiCallContext
 from src.services.http_fetch import fetch_image_bytes
 from src.services.image_ops import ensure_png, flatten_on_color, sniff_mime
 from src.services.replicate_client import run_remove_bg
+from src.services.resource_persist import (
+    GeneratedResourceValue,
+    PersistContext,
+    save_generated_resource,
+    save_response_fields,
+)
 from src.services.rmbg import get_remove_bg_adapter
 from src.services.storage import build_remove_bg_path, upload_bytes
 
 logger = logging.getLogger(__name__)
+
+router = APIRouter()
 
 
 _DATA_URI_PREFIX = "data:"
@@ -257,4 +272,77 @@ async def image_remove_bg_core(
         aiRequestId=ai_request_id,
         media_url=media_url,
         image_bytes=None,
+    )
+
+
+@router.post("/image-remove-bg", response_model=ImageRemoveBgResponse)
+async def image_remove_bg(
+    params: ImageRemoveBgParams,
+    session: EditorSessionContext = Depends(require_editor_session),
+) -> ImageRemoveBgResponse:
+    """HTTP endpoint — URL-only public contract + optional `model` selection.
+
+    Ported from image-api; only the auth seam changes (editor session, not
+    X-API-Key). `model` is validated against the `rmbg` allowlist BEFORE binding
+    (public-bound guard) — a bad id raises `RemixDomainError(422 UNSUPPORTED_MODEL)`
+    surfaced by the dedicated handler in `main.py`.
+    """
+    start_ms = time.monotonic()
+    image_url_str = str(params.imageUrl)
+    preserve_alpha = params.preserveAlpha if params.preserveAlpha is not None else True
+
+    if params.model is not None:
+        resolve_model_params({"model": params.model}, "rmbg")
+
+    core_req = ImageRemoveBgRequest(
+        imageUrl=image_url_str,
+        imageBase64=None,
+        preserveAlpha=preserve_alpha,
+        backgroundColor=params.backgroundColor,
+        return_bytes=False,
+        model=params.model,
+    )
+    # Attribution (dual-context, only-winner): remixId wins as the cost discriminator
+    # (snapshot_id left NULL to avoid double-count); else snapshotId → book cost.
+    # admin_ref/sid from the editor session ride into `request.audit`.
+    if params.remixId:
+        ai_context = AiCallContext(
+            remix_id=params.remixId, admin_ref=session.admin_ref, sid=session.sid
+        )
+    elif params.snapshotId:
+        ai_context = AiCallContext(
+            snapshot_id=params.snapshotId, admin_ref=session.admin_ref, sid=session.sid
+        )
+    else:
+        ai_context = AiCallContext(admin_ref=session.admin_ref, sid=session.sid)
+    result = await image_remove_bg_core(core_req, ai_context=ai_context)
+
+    # Opt-in auto-persist (no-op parity seam). Soft-fail never breaks the response.
+    save_outcome = await save_generated_resource(
+        params.saveResource,
+        GeneratedResourceValue(
+            media_url=result.media_url or result.imageUrl or "",
+            storage_path=result.storagePath,
+            ai_request_id=result.aiRequestId,
+            original_url=image_url_str,
+        ),
+        PersistContext(snapshot_id=params.snapshotId, remix_id=params.remixId),
+    )
+
+    processing_ms = int((time.monotonic() - start_ms) * 1000)
+    return ImageRemoveBgResponse(
+        success=True,
+        data=ImageRemoveBgData(
+            imageUrl=result.imageUrl or "",
+            storagePath=result.storagePath or "",
+            aiRequestId=result.aiRequestId,
+            media_url=result.media_url,
+            **save_response_fields(save_outcome),
+        ),
+        meta=ImageRemoveBgMeta(
+            processingTime=processing_ms,
+            mimeType=result.mimeType,
+            replicatePredictionId=result.replicatePredictionId,
+            backgroundColor=result.backgroundColor,
+        ),
     )

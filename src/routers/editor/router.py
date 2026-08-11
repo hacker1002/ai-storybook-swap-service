@@ -17,6 +17,7 @@ from src.routers.editor.get_book_bundle import get_book_bundle
 from src.routers.editor.get_remix import get_remix
 from src.routers.editor.list_remixes import list_remixes
 from src.routers.editor.update_remix_columns import update_remix_columns
+from src.routers.editor.upload_asset import upload_asset
 
 router = APIRouter(prefix="/api/editor", dependencies=[Depends(require_editor_session)])
 
@@ -32,3 +33,5 @@ router.add_api_route("/remixes", create_remix, methods=["POST"], status_code=201
 router.add_api_route("/remixes/{remix_id}/columns", update_remix_columns, methods=["PATCH"])
 # 06 — delete remix
 router.add_api_route("/remixes/{remix_id}", delete_remix, methods=["DELETE"])
+# P3c Gap 1 — proxy upload (erasor mask/composite; sub-app has no supabase-js)
+router.add_api_route("/assets", upload_asset, methods=["POST"], status_code=201)

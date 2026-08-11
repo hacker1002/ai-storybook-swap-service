@@ -49,6 +49,9 @@ class AppDbAdapter(Protocol):
 
     # --- AI logging (P3b) ---
     async def insert_ai_log(self, row: dict) -> None: ...
+    # P3c provenance: one ai_service_logs row by id (None when absent/purged). Reads
+    # a WHITELIST of columns — request is read ONLY for its ref_files[], never echoed.
+    async def get_ai_log(self, ai_request_id: UUID) -> dict | None: ...
 
     # --- prompt templates (P3b — prompt + model, read-only) ---
     async def get_prompt_template(self, key: str) -> dict | None: ...

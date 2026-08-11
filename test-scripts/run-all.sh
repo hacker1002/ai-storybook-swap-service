@@ -23,6 +23,12 @@ SCRIPTS=(
   test-update-remix-columns.sh # spec 05 — reads REMIX_ID
   test-get-job-status.sh     # spec 07
   test-delete-remix.sh       # spec 06 — creates its own throwaway, deletes twice
+  # P3c ported endpoints (cheap paths always; RUN_AI=1 for the real AI happy-paths)
+  test-edit-object-image.sh      # retouch inpaint (Gemini)
+  test-image-remove-bg.sh        # retouch remove-bg (Replicate)
+  test-upscale-image.sh          # image upscale (Replicate)
+  test-editor-asset-upload.sh    # Gap 1 proxy upload (no AI — 201 needs Storage)
+  test-provenance-references.sh  # Gap 2 provenance (no AI)
 )
 
 PASS=0; FAIL=0; FAILED_NAMES=()

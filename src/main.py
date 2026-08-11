@@ -27,10 +27,15 @@ from src.db.postgres_adapter import PostgresAppDbAdapter
 from src.jobs import reaper_loop, wait_all
 from src.jobs.config import SHUTDOWN_TIMEOUT_SEC
 from src.routers.editor.router import router as editor_router
+from src.routers.image.error_handler import image_domain_error_handler
+from src.routers.image.router import router as image_router
 from src.routers.jobs.router import router as jobs_router
+from src.routers.provenance.router import router as provenance_router
 from src.routers.remix.error_handler import remix_domain_error_handler
 from src.routers.remix.router import router as remix_router
+from src.routers.retouch.router import router as retouch_router
 from src.services.ai_usage.logger import drain as drain_ai_logs
+from src.services.image.errors import ImageDomainError
 from src.services.remix.errors import RemixDomainError
 from src.storage.adapter import set_storage
 from src.storage.supabase_rest import SupabaseRestStorage
@@ -156,10 +161,17 @@ async def body_size_and_access_log(request: Request, call_next):
 app.include_router(editor_router)
 app.include_router(jobs_router)
 app.include_router(remix_router)
-# Registered AFTER register_exception_handlers so this type-specific handler wins
-# precedence over the catch-all Exception handler (remix routes keep image-api's
+# P3c — ported retouch (edit-object-image, image-remove-bg) + image (upscale-image)
+# + provenance (ai-request-references). All keep image-api's OWN error envelope, NOT
+# the /api/editor/* {success,error} shape (except upload_asset which IS an editor route).
+app.include_router(retouch_router)
+app.include_router(image_router)
+app.include_router(provenance_router)
+# Registered AFTER register_exception_handlers so these type-specific handlers win
+# precedence over the catch-all Exception handler (ported routes keep image-api's
 # own error envelope, NOT the /api/editor/* {success,error} shape).
 app.add_exception_handler(RemixDomainError, remix_domain_error_handler)
+app.add_exception_handler(ImageDomainError, image_domain_error_handler)
 
 
 @app.get("/health")

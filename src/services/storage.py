@@ -24,6 +24,8 @@ __all__ = [
     "upload_bytes",
     "build_remove_bg_path",
     "build_upscale_path",
+    "build_edit_object_path",
+    "build_editor_asset_path",
     "build_narration_path",
     "build_combined_narration_path",
 ]
@@ -31,7 +33,13 @@ __all__ = [
 # Permanent prefixes inside the shared bucket (parity with image-api storage/paths).
 _REMOVE_BG_PREFIX = "remove-bg-objects"
 _UPSCALE_PREFIX = "upscale"
+_EDIT_OBJECT_PREFIX = "edit-objects"
+# Editor sub-app uploads (Gap 1 — erasor mask/composite; P3c Phase 05). Server-side
+# path only (never client-supplied) — the sub-app has no supabase-js Storage seam.
+_EDITOR_ASSET_PREFIX = "editor-assets"
 _NARRATION_PREFIX = "narrations"
+
+_EXT_BY_MIME = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 
 
 def build_remove_bg_path(image_url: str) -> str:
@@ -58,6 +66,36 @@ def build_upscale_path(origin_name: str, scale: float) -> str:
     slug = sanitize_filename(origin_name or "image", max_len=20)
     scale_slug = ("%g" % scale).replace(".", "_")
     return f"{_UPSCALE_PREFIX}/{timestamp_ms}-{slug}-x{scale_slug}.png"
+
+
+def build_edit_object_path(image_url: str) -> str:
+    """edit-object-image output path: `edit-objects/{ts_ms}-{slug}-edited.png`.
+
+    Ported verbatim from image-api `storage/paths.build_edit_object_path` (pure
+    string builder, no I/O). Slug derives from the SOURCE URL filename — same
+    dedup-by-timestamp scheme as the rmbg/upscale builders.
+    """
+    timestamp_ms = int(time.time() * 1000)
+    parsed = urlparse(image_url)
+    base = parsed.path.rsplit("/", 1)[-1] or "image"
+    if "." in base:
+        base = base.rsplit(".", 1)[0]
+    origin_name = sanitize_filename(base, max_len=20)
+    return f"{_EDIT_OBJECT_PREFIX}/{timestamp_ms}-{origin_name}-edited.png"
+
+
+def build_editor_asset_path(mime: str) -> str:
+    """Editor sub-app upload path (Gap 1): `editor-assets/{ts_ms}-{rand}.{ext}`.
+
+    Path is generated ENTIRELY server-side — the client never supplies it (traversal
+    / overwrite guard). Extension is derived from the validated MIME allowlist, NOT
+    from any client filename. `rand` = 8 hex to avoid collision inside one ms.
+    """
+    import secrets
+
+    timestamp_ms = int(time.time() * 1000)
+    ext = _EXT_BY_MIME.get(mime, "png")
+    return f"{_EDITOR_ASSET_PREFIX}/{timestamp_ms}-{secrets.token_hex(4)}.{ext}"
 
 
 def build_narration_path(path_key: str, ext: str = "mp3") -> str:
