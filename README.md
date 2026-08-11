@@ -5,7 +5,9 @@ backend-layer fork of `ai-storybook-image-api` — it shares **no code**, only t
 API contract. Stack: **Python 3.12 + uv + FastAPI + asyncpg** (no Supabase SDK,
 no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 
-## Scope (P3a — foundation + CRUD)
+## Scope
+
+### P3a — Foundation + CRUD (complete)
 
 | Endpoint | Spec |
 |---|---|
@@ -16,6 +18,35 @@ no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 | `PATCH /api/editor/remixes/{id}/columns` | 05 — update writable columns |
 | `DELETE /api/editor/remixes/{id}` | 06 — delete (idempotent, 409 if busy) |
 | `GET  /api/jobs/status?ids=` | 07 — batch job-status polling |
+
+### P3b — Jobs pipeline + remix sync ops (shipped 2026-08-11)
+
+**Jobs enqueue/cancel** (9 routes):
+- `POST /api/jobs/remix/{id}/audio-swap` → enqueue audio job (14)
+- `POST /api/jobs/remix/{id}/sprite-swap` → enqueue sprite job (15)
+- `POST /api/jobs/remix/{id}/mix-swap` → enqueue mix job (**409 if dedup**)
+- `POST /api/jobs/remix/{id}/rmbg` → enqueue rmbg job (dedup 200)
+- `POST /api/jobs/remix/{id}/upscale` → enqueue upscale job (dedup 200)
+- `POST /api/jobs/remix/{id}/detect-sprite-defects` → enqueue sprite defect detector (dedup 200)
+- `POST /api/jobs/remix/{id}/detect-mix-defects` → enqueue mix defect detector (dedup 200)
+- `POST /api/jobs/remix/{id}/detect-rmbg-defects` → enqueue rmbg defect detector (dedup 200)
+- `POST /api/jobs/remix/{id}/cancel/{job_id}` → cancel any job (idempotent)
+
+**Remix sync ops** (7 routes, internal/test, no FE consumer):
+- `POST /api/remix/build-crop-sheet` → build actor crop sheet from variant frame
+- `POST /api/remix/swap-sprite-sheet` → sprite swap via Gemini
+- `POST /api/remix/swap-mix-crop-sheet` → mix crop swap via Gemini
+- `POST /api/remix/detect-crop-geometry` → detect crop boxes for cut (Gemini flash + numpy)
+- `POST /api/remix/detect-crop-defects` → detect sprite/mix/rmbg defects (Gemini flash)
+- `POST /api/remix/detect-swap-defects` → detect swap result quality
+- `POST /api/remix/detect-mix-defects` → detect mix quality
+
+**Infrastructure** (all *-swap-service scoped):
+- In-process jobs lib: `AsyncJobRunner` + `JobReaper` (stale job cleanup scoped to `source='remix-swap-service'`)
+- Content-addressed storage (CAS) adapter: httpx REST to Supabase Storage bucket `storybook-assets`
+- Global Replicate semaphore + version pins (prevent burst overload)
+- AI call layer: Gemini via `gemini_ainvoke` (ADC-Vertex), Replicate SDK
+- Cost attribution: `ai_service_logs` with `request.audit={admin_ref,sid,source:"remix-swap-service"}` + `remix_id` key; `user_id` always NULL (service account)
 
 ## Auth
 
@@ -30,6 +61,18 @@ Dev token mint (the Admin App mint endpoint does not exist yet — P2):
 uv run python scripts/mint_dev_editor_token.py            # valid admin token
 uv run python scripts/mint_dev_editor_token.py --expired  # negative-path token
 ```
+
+## Deliberate Divergences from image-api
+
+Unlike `ai-storybook-image-api` (which this is a fork of), the Remix Swap Service intentionally diverges:
+
+- **Auth**: Bearer editor-session JWT (`aud=remix-editor`), NOT `X-API-Key` header
+- **AI cost logging**: `ai_service_logs.user_id` always NULL; request audit nests into `request.audit={admin_ref,sid,source:"remix-swap-service"}` JSONB. Attribution key is `remix_id`, not `book_id`
+- **Job reaper scoping**: `list_stale_jobs` filters to `source='remix-swap-service'` (shared `background_jobs` table with image-api — must not reclaim image-api's jobs without their finalize hooks)
+- **Mix-swap dedup**: Returns **409 Conflict** (image-api returns 200 deduped); other detectors (detect-mix, detect-rmbg) return 409; sprite/audio/rmbg/upscale/detect-sprite → 200 deduped. FE sub-app must treat mix-swap 409 as a normal dedup response
+- **Storage**: httpx REST to Supabase Storage (no `supabase-py` SDK)
+- **LangSmith project**: `remix-swap-service` (separate from image-api)
+- **Remix sync routes** (`/api/remix/*`): internal/test only; keep image-api `RemixDomainError` envelope (no FE consumer today)
 
 ## Run
 

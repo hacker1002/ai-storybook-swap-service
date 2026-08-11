@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from src.core.remix_columns import WRITABLE_REMIX_COLUMNS
+from src.core.remix_columns import JOB_ONLY_COLUMNS, WRITABLE_REMIX_COLUMNS
 
 
 class FakeAppDbAdapter:
@@ -24,6 +24,10 @@ class FakeAppDbAdapter:
         self.voices: list[dict] = []
         self.remixes: dict[str, dict] = {}
         self.jobs: dict[str, dict] = {}
+        # keyed by `name` (the prompt_templates key column), NOT `id` — seed via
+        # `fake.prompt_templates[name] = {...}` directly (the generic `seed()` helper
+        # keys dicts by `id`, which does not apply here).
+        self.prompt_templates: dict[str, dict] = {}
         self._fail: dict[str, Exception] = {}
 
     # ---- scripting helpers ----
@@ -53,6 +57,10 @@ class FakeAppDbAdapter:
             return self.snapshots.get(str(current_version))
         matches = [s for s in self.snapshots.values() if str(s.get("book_id")) == str(book_id)]
         return matches[-1] if matches else None
+
+    async def get_snapshot(self, snapshot_id: UUID) -> dict | None:
+        self._maybe_fail("get_snapshot")
+        return self.snapshots.get(str(snapshot_id))
 
     async def get_art_style(self, art_style_id: UUID) -> dict | None:
         self._maybe_fail("get_art_style")
@@ -99,6 +107,16 @@ class FakeAppDbAdapter:
         row.update(columns)
         return True
 
+    async def update_remix_job_column(self, remix_id: UUID, column: str, value) -> bool:
+        self._maybe_fail("update_remix_job_column")
+        if column not in JOB_ONLY_COLUMNS:
+            raise ValueError(f"not a job-only remix column: {column!r}")
+        row = self.remixes.get(str(remix_id))
+        if row is None:
+            return False
+        row[column] = value
+        return True
+
     async def delete_remix(self, remix_id: UUID) -> bool:
         self._maybe_fail("delete_remix")
         return self.remixes.pop(str(remix_id), None) is not None
@@ -111,6 +129,28 @@ class FakeAppDbAdapter:
         return snap.get("book_id") if snap else None
 
     # ---- jobs ----
+    async def get_job(self, job_id: UUID) -> dict | None:
+        self._maybe_fail("get_job")
+        return self.jobs.get(str(job_id))
+
+    async def list_stale_jobs(self, running_before, queued_before) -> list[dict]:
+        self._maybe_fail("list_stale_jobs")
+        # Mirror prod: only sweep rows this service authored (params.source scope).
+        out: list[dict] = []
+        for j in self.jobs.values():
+            if (j.get("params") or {}).get("source") != "remix-swap-service":
+                continue
+            status = j.get("status")
+            if status == "running":
+                upd = j.get("updated_at")
+                if upd is not None and upd < running_before:
+                    out.append(j)
+            elif status == "queued":
+                crt = j.get("created_at")
+                if crt is not None and crt < queued_before:
+                    out.append(j)
+        return out
+
     async def get_jobs(self, ids: list[UUID]) -> list[dict]:
         self._maybe_fail("get_jobs")
         wanted = {str(i) for i in ids}
@@ -154,3 +194,8 @@ class FakeAppDbAdapter:
 
     async def insert_ai_log(self, row: dict) -> None:
         return None
+
+    # ---- prompt templates ----
+    async def get_prompt_template(self, key: str) -> dict | None:
+        self._maybe_fail("get_prompt_template")
+        return self.prompt_templates.get(str(key))

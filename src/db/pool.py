@@ -24,11 +24,16 @@ _POOL: asyncpg.Pool | None = None
 
 
 async def _init_connection(conn: asyncpg.Connection) -> None:
-    """Register JSON/JSONB codecs so values decode to dict/list and encode from them."""
+    """Register JSON/JSONB codecs so values decode to dict/list and encode from them.
+
+    `default=str` so JSONB blobs (job `params`/`step_details`/`result`,
+    `ai_service_logs` request/response) tolerate UUID/datetime values pulled from
+    adapter reads — the Supabase client serialized these the same way. On read they
+    come back as strings, so `params->>'remix_id'` comparisons still hold."""
     for typename in ("json", "jsonb"):
         await conn.set_type_codec(
             typename,
-            encoder=json.dumps,
+            encoder=lambda v: json.dumps(v, default=str),
             decoder=json.loads,
             schema="pg_catalog",
         )

@@ -3,4 +3,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+# Dev fixtures carry REAL captured DB rows (book/snapshot/remix/human/voice
+# content) + local ids — never commit.
 test-scripts/fixtures/local-ids.env
+test-scripts/fixtures/remote-*.json

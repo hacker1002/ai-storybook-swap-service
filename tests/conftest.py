@@ -14,6 +14,14 @@ import os
 os.environ.setdefault("APP_DB_URL", "postgresql://unit-test-never-connected/db")
 os.environ["REMIX_EDITOR_TOKEN_SECRET"] = "test-secret-constant-do-not-reuse"
 
+# Force LangSmith tracing OFF for the whole suite. Unit tests call the
+# @traceable/langchain-wrapped AI seams with MOCKS; if the developer's shell has
+# LANGCHAIN_TRACING_V2=true, those mocked runs would ship to LangSmith and pollute
+# the real project. Only genuine API calls (live server) should trace. Hard-set
+# (not setdefault) so a truthy shell value can't leak into a test run.
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+os.environ["LANGSMITH_TRACING"] = "false"
+
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 

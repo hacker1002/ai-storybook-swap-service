@@ -7,6 +7,7 @@ will keep image-api's own envelope + their own handlers.
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -16,14 +17,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
+import src.jobs.handlers  # noqa: F401 — side-effect: registers job handlers BEFORE app = FastAPI(...)
 from src.config.settings import settings
 from src.core.errors import register_exception_handlers
 from src.core.logging import configure_logging, get_logger
 from src.db.adapter import set_adapter
-from src.db.pool import close_pool, create_pool
+from src.db.pool import close_pool, create_pool, get_pool
 from src.db.postgres_adapter import PostgresAppDbAdapter
+from src.jobs import reaper_loop, wait_all
+from src.jobs.config import SHUTDOWN_TIMEOUT_SEC
 from src.routers.editor.router import router as editor_router
 from src.routers.jobs.router import router as jobs_router
+from src.routers.remix.error_handler import remix_domain_error_handler
+from src.routers.remix.router import router as remix_router
+from src.services.ai_usage.logger import drain as drain_ai_logs
+from src.services.remix.errors import RemixDomainError
+from src.storage.adapter import set_storage
+from src.storage.supabase_rest import SupabaseRestStorage
 
 configure_logging()
 logger = get_logger("main")
@@ -39,11 +49,45 @@ async def lifespan(_app: FastAPI):
     logger.info("lifespan_startup")
     pool = await create_pool()
     set_adapter(PostgresAppDbAdapter(pool))
+    # Storage seam: Supabase Storage REST over httpx (NO SDK). Construction is
+    # I/O-free (URL/key only) — actual writes happen in P3b ported endpoints.
+    set_storage(
+        SupabaseRestStorage(
+            base_url=settings.app_storage_url,
+            service_key=settings.app_storage_service_key,
+            default_bucket=settings.app_storage_bucket,
+        )
+    )
+    # Startup guard: background_jobs.user_id is a NOT NULL FK -> auth.users. Verify
+    # the configured service user exists before accepting job enqueues. Enforced
+    # only when the value is set (unit tests leave it empty -> still boots).
+    uid = settings.remix_swap_service_user_id
+    if uid:
+        try:
+            uid_uuid = uuid.UUID(uid)
+        except ValueError as exc:
+            raise RuntimeError(f"REMIX_SWAP_SERVICE_USER_ID {uid!r} is not a valid UUID") from exc
+        async with pool.acquire() as conn:
+            exists = await conn.fetchval("SELECT 1 FROM auth.users WHERE id = $1", uid_uuid)
+        if not exists:
+            raise RuntimeError(
+                f"REMIX_SWAP_SERVICE_USER_ID {uid!r} not found in auth.users — "
+                "background_jobs.user_id is a NOT NULL FK; set it to a real auth.users id"
+            )
+    # Reaper reclaims stale running/queued jobs (config-constant thresholds).
+    reaper_task = asyncio.create_task(reaper_loop(), name="reaper")
     try:
         yield
     finally:
         logger.info("lifespan_shutdown")
-        await close_pool()
+        reaper_task.cancel()
+        try:
+            await reaper_task
+        except asyncio.CancelledError:
+            pass
+        await wait_all(timeout=SHUTDOWN_TIMEOUT_SEC)  # drain in-flight job handlers
+        await drain_ai_logs()  # flush fire-and-forget ai_service_logs inserts
+        await close_pool()  # LAST — wait_all/drain still write via the pool
 
 
 app = FastAPI(
@@ -111,6 +155,11 @@ async def body_size_and_access_log(request: Request, call_next):
 
 app.include_router(editor_router)
 app.include_router(jobs_router)
+app.include_router(remix_router)
+# Registered AFTER register_exception_handlers so this type-specific handler wins
+# precedence over the catch-all Exception handler (remix routes keep image-api's
+# own error envelope, NOT the /api/editor/* {success,error} shape).
+app.add_exception_handler(RemixDomainError, remix_domain_error_handler)
 
 
 @app.get("/health")

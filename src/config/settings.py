@@ -30,10 +30,14 @@ class Settings(BaseSettings):
     # comma-separated LIST for rotation (old,new) — see `editor_token_secrets`.
     remix_editor_token_secret: str
 
-    # --- DB pool (Phase 02) -------------------------------------------------
+    # --- DB pool (Phase 02; ceiling raised to 20 in P3b — jobs run concurrent AI
+    #     handlers, acquire-per-query, so the pool must not starve under load) ----
     app_db_pool_min: int = 2
-    app_db_pool_max: int = 10
+    app_db_pool_max: int = 20
     app_db_statement_timeout_ms: int = 15000
+    # Heartbeat beat period for long single-`await` job handlers (helpers/heartbeat).
+    # MUST keep ≥3× margin under the reaper stale threshold (REAPER_STALE_SEC=1800).
+    job_heartbeat_sec: int = 30
     # A pre-existing auth.users row used as `background_jobs.user_id` (NOT NULL FK).
     # The service has no user directory; real attribution lives in params. Only
     # REQUIRED once jobs are inserted (P3b) — optional/empty at P3a.
@@ -48,10 +52,42 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:5173"
     port: int = 8100
 
+    # --- Storage (Supabase Storage REST via httpx — NO SDK) -----------------
+    # Base Supabase URL (same host that serves /storage/v1/...). Local P3b:
+    # http://127.0.0.1:54321. Optional at P3a boot; the storage adapter is only
+    # exercised once a ported endpoint uploads (P3b).
+    app_storage_url: str = ""
+    # Service-role key for Storage writes. SECRET — never logged / never to client.
+    app_storage_service_key: str = ""
+    # Reuse the EXISTING editor bucket (verified: image-api uploader
+    # STORAGE_BUCKET = "storybook-assets") — no new bucket, URL pattern + SSRF
+    # allowlist unchanged.
+    app_storage_bucket: str = "storybook-assets"
+    # Comma-separated SSRF allowlist of host or host:port entries that bypass the
+    # private-IP guard (local: "127.0.0.1:54321" so the service can re-fetch its
+    # own Storage uploads). Empty in prod (public *.supabase.co resolves publicly).
+    ssrf_allowed_hosts: str = ""
+
     # --- AI (optional at P3a, REQUIRED at P3b) ------------------------------
     google_cloud_project: str = ""
     replicate_api_token: str = ""
     langchain_api_key: str = ""
+    # ElevenLabs TTS/TTV (narration + voice-design pipeline, faithfully ported
+    # from image-api `settings.elevenlabs_api_key`). Safe empty default so
+    # import/construction never fails when the env var is unset; the audio
+    # handlers surface an upstream auth error at call-time instead of boot-fail.
+    elevenlabs_api_key: str = ""
+    # Vertex AI region for Gemini (ADR-048). Not a secret.
+    vertex_ai_location: str = "us-central1"
+    # LangSmith tracing — dedicated project, separate from image-api's.
+    langchain_project: str = "remix-swap-service"
+    langchain_tracing_v2: str = ""
+    langchain_endpoint: str = ""
+
+    @cached_property
+    def ssrf_allowed_hosts_list(self) -> list[str]:
+        """Parsed SSRF allowlist (host or host:port). Empties dropped."""
+        return [h.strip().lower() for h in self.ssrf_allowed_hosts.split(",") if h.strip()]
 
     @cached_property
     def editor_token_secrets(self) -> list[str]:
@@ -66,3 +102,25 @@ class Settings(BaseSettings):
 
 
 settings = Settings()  # type: ignore[call-arg]  # required fields come from env/.env
+
+
+def _export_langsmith_env() -> None:
+    """Bridge LangSmith config from `.env` (loaded by pydantic into `settings`) to
+    `os.environ`, which is where the `langsmith`/`langchain` SDK actually reads
+    tracing config. pydantic-settings parses `.env` itself and does NOT populate
+    `os.environ`, and `uv run` doesn't load `.env` either — so without this the
+    tracer stays OFF (no traces) even though the keys are in `.env`. `setdefault`
+    lets a real shell env win."""
+    import os
+
+    for name, value in (
+        ("LANGCHAIN_TRACING_V2", settings.langchain_tracing_v2),
+        ("LANGCHAIN_API_KEY", settings.langchain_api_key),
+        ("LANGCHAIN_PROJECT", settings.langchain_project),
+        ("LANGCHAIN_ENDPOINT", settings.langchain_endpoint),
+    ):
+        if value:
+            os.environ.setdefault(name, value)
+
+
+_export_langsmith_env()

@@ -11,11 +11,13 @@ Invariants:
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
 
-from src.core.remix_columns import INSERT_COLUMNS, WRITABLE_REMIX_COLUMNS
+from src.core.job_types import SERVICE_SOURCE
+from src.core.remix_columns import INSERT_COLUMNS, JOB_ONLY_COLUMNS, WRITABLE_REMIX_COLUMNS
 
 _ACTIVE_JOB_STATUSES = ("queued", "running")
 
@@ -56,6 +58,12 @@ class PostgresAppDbAdapter:
                     "SELECT * FROM snapshots WHERE book_id = $1 ORDER BY updated_at DESC LIMIT 1",
                     book_id,
                 )
+        return dict(row) if row else None
+
+    async def get_snapshot(self, snapshot_id: UUID) -> dict | None:
+        """Full snapshot row by id (P3b detect jobs 11/12 target-pool resolve)."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM snapshots WHERE id = $1", snapshot_id)
         return dict(row) if row else None
 
     async def get_art_style(self, art_style_id: UUID) -> dict | None:
@@ -127,6 +135,19 @@ class PostgresAppDbAdapter:
             result = await conn.execute(sql, remix_id, *values)
         return _rowcount(result) > 0
 
+    async def update_remix_job_column(self, remix_id: UUID, column: str, value) -> bool:
+        """UPDATE a single JOB_ONLY JSONB column (`rmbgs`/`upscales`) — the P3b
+        crop-pipeline stage handlers' single-writer full-column write. The column
+        name comes ONLY from the `JOB_ONLY_COLUMNS` allowlist (never interpolated
+        from request data), value via placeholder. Raises on any other column so a
+        WRITABLE column can never be reached through this seam by mistake."""
+        if column not in JOB_ONLY_COLUMNS:
+            raise ValueError(f"not a job-only remix column: {column!r}")
+        sql = f"UPDATE remixes SET {column} = $2, updated_at = now() WHERE id = $1"
+        async with self._pool.acquire() as conn:
+            result = await conn.execute(sql, remix_id, value)
+        return _rowcount(result) > 0
+
     async def delete_remix(self, remix_id: UUID) -> bool:
         async with self._pool.acquire() as conn:
             result = await conn.execute("DELETE FROM remixes WHERE id = $1", remix_id)
@@ -141,6 +162,38 @@ class PostgresAppDbAdapter:
         return val
 
     # ------------------------------------------------------------------ jobs
+    async def get_job(self, job_id: UUID) -> dict | None:
+        """Single-row `SELECT *` by id. Powers `JobContext.check_cancel` (reads the
+        live `cancel_requested` flag) — one short query per poll, never held across
+        an AI await."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM background_jobs WHERE id = $1", job_id)
+        return dict(row) if row else None
+
+    async def list_stale_jobs(self, running_before: datetime, queued_before: datetime) -> list[dict]:
+        """Reaper sweep source: rows still `running` whose `updated_at` predates
+        `running_before` OR still `queued` whose `created_at` predates
+        `queued_before`. Full row (`SELECT *`) so the reaper can run finalize hooks
+        that read `type`/`params`/`result` without a second query. The reaper then
+        CAS-flips each to `failed` via `update_job(..., expect_status=<row status>)`
+        so a concurrent worker/instance finalizing the same row loses cleanly.
+
+        SCOPED to `params.source = SERVICE_SOURCE`: the table is shared with
+        image-api/editor, and this service registers NO finalize hook for their job
+        types — reclaiming a foreign stale job would flip it to `failed` without its
+        finalize hook, orphaning that leaf. Only sweep our own rows."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT * FROM background_jobs
+                   WHERE params->>'source' = $3
+                     AND ((status = 'running' AND updated_at < $1)
+                          OR (status = 'queued'  AND created_at < $2))""",
+                running_before,
+                queued_before,
+                SERVICE_SOURCE,
+            )
+        return [dict(r) for r in rows]
+
     async def get_jobs(self, ids: list[UUID]) -> list[dict]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
@@ -207,6 +260,14 @@ class PostgresAppDbAdapter:
         async with self._pool.acquire() as conn:
             result = await conn.execute(sql, *params)
         return _rowcount(result) > 0
+
+    async def get_prompt_template(self, key: str) -> dict | None:
+        """Read one `prompt_templates` row by its `name` key (verified real key
+        column — image-api's prompt loader queries `.eq("name", name)`). Returns
+        the full row dict (`content`, `model`, `name`, …) or None. Read-only."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM prompt_templates WHERE name = $1", key)
+        return dict(row) if row else None
 
     async def insert_ai_log(self, row: dict) -> None:
         bad = set(row) - _AI_LOG_COLUMNS
