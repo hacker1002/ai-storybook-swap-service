@@ -108,8 +108,8 @@ class SupabaseRestStorage:
                 if resp.status_code >= 400:
                     # Non-transport API error (auth, bucket-not-found) — no retry.
                     logger.warning(
-                        "storage_upload_failed bucket=%s path=%s bytes=%d ct=%s status=%d",
-                        bkt, path, len(data), content_type, resp.status_code,
+                        "storage_upload_failed bucket=%s path=%s bytes=%d ct=%s status=%d body=%s",
+                        bkt, path, len(data), content_type, resp.status_code, resp.text[:200],
                     )
                     raise StorageUploadError(
                         path=path, bucket=bkt,
@@ -169,7 +169,8 @@ class SupabaseRestStorage:
                 resp = await client.request("DELETE", obj_url, headers=self._auth_headers())
             if resp.status_code >= 400:
                 logger.warning(
-                    "storage_delete_failed bucket=%s path=%s status=%d", bkt, path, resp.status_code,
+                    "storage_delete_failed bucket=%s path=%s status=%d body=%s",
+                    bkt, path, resp.status_code, resp.text[:200],
                 )
                 return
             logger.info("storage_delete_ok bucket=%s path=%s", bkt, path)
