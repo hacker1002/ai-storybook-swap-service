@@ -14,8 +14,12 @@ blob attach) is preserved. Divergences forced by this service's seams:
     vs the editor app writing the same table). `book_id` is resolved from `remix_id`
     via the `remixes.snapshot_id → snapshots.book_id` bridge (`get_book_id_for_remix`)
     and CACHED on the ctx so repeated AI calls don't re-query.
-  - NO `id` column: `ai_service_logs.id` has a DB `gen_random_uuid()` default and is
-    NOT in the adapter's writable allowlist, so the row omits it (the DB mints it).
+  - `id` is CLIENT-MINTED (parity restored 260812, đảo divergence P3b): choke points
+    mint `new_request_id()` BEFORE the provider call and pass it as `entry.id`, so the
+    row `id` == the `ai_request_id` surfaced in response envelopes (image-api
+    semantics — enables future provenance lookup by envelope id). The logger mints a
+    fallback uuid4 when a caller omits it; the DB `gen_random_uuid()` default is now
+    the last-resort only.
 
 Invariants (unchanged): logging NEVER fails the main request — every exception on
 the insert path is swallowed + `log.warning`, no retry, no queue.
@@ -65,6 +69,10 @@ class AiLogEntry:
     status: str  # 'success' | 'error'
     context: AiCallContext
     request: dict
+    # Row id == the pre-call `new_request_id()` the choke point surfaced as
+    # `ai_request_id` in its envelope. None/malformed → logger mints a uuid4 so the
+    # insert never fails on it.
+    id: str | None = None
     response: dict | None = None
     error: str | None = None
     latency_ms: int | None = None
@@ -80,9 +88,10 @@ class AiLogEntry:
 
 
 def new_request_id() -> str:
-    """A client-side uuid4 string. NOTE: unlike image-api this is NOT written as the
-    row `id` (the DB owns `id` via `gen_random_uuid()`); kept for callers that want a
-    correlation id in their own response envelope."""
+    """A client-side uuid4 string, minted BEFORE the provider call. Doubles as the
+    `ai_service_logs.id` row id (pass it as `AiLogEntry.id`) AND the `ai_request_id`
+    correlation id in the caller's response envelope — image-api parity (restored
+    260812), so an envelope id is always resolvable via `get_ai_log`."""
     return str(uuid4())
 
 
@@ -100,7 +109,7 @@ def _to_uuid(value) -> UUID | None:
 
 
 def _entry_to_row(entry: AiLogEntry) -> dict:
-    """Map `AiLogEntry` → `ai_service_logs` columns (allowlisted only; NO `id`).
+    """Map `AiLogEntry` → `ai_service_logs` columns (allowlisted only).
 
     NOT-NULL columns (`provider`/`operation`/`model`/`status`/`request`) are coerced
     so a partial entry can never make the insert fail on a constraint (which would
@@ -142,6 +151,9 @@ def _entry_to_row(entry: AiLogEntry) -> dict:
         response["output_files"] = files
 
     row = {
+        # Client-minted id (== envelope ai_request_id); fallback mint keeps the
+        # insert alive when a caller omitted/mangled it.
+        "id": _to_uuid(entry.id) or uuid4(),
         "provider": entry.provider,
         "operation": entry.operation,
         "model": entry.model or "unknown",

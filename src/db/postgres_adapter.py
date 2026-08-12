@@ -29,7 +29,7 @@ _UPDATABLE_JOB_COLUMNS: frozenset[str] = frozenset(
      "cancel_requested", "book_id", "params"}
 )
 _AI_LOG_COLUMNS: frozenset[str] = frozenset(
-    {"provider", "operation", "model", "status", "error", "latency_ms", "book_id",
+    {"id", "provider", "operation", "model", "status", "error", "latency_ms", "book_id",
      "snapshot_id", "remix_id", "job_id", "user_id", "request", "response",
      "provider_request_id", "input_tokens", "output_tokens", "total_tokens",
      "usage_unit", "usage_amount", "cost_usd", "cost_source", "pricing_version"}

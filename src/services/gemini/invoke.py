@@ -189,6 +189,7 @@ async def gemini_ainvoke(
         latency_ms = int((time.monotonic() - t0) * 1000)
         log_ai_request(
             AiLogEntry(
+                id=rid,
                 provider="gemini", operation=run_name, model=model,
                 status="error", context=ctx, request=request_payload,
                 error=str(exc)[:2000], latency_ms=latency_ms, ref_blobs=ref_blobs,
@@ -212,6 +213,7 @@ async def gemini_ainvoke(
 
     log_ai_request(
         AiLogEntry(
+            id=rid,
             provider="gemini", operation=run_name, model=model,
             status="success", context=ctx, request=request_payload,
             response=sanitize_response({"content": getattr(message, "content", None)}),

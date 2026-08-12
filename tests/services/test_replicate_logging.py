@@ -58,6 +58,8 @@ async def test_remove_bg_logs_success(monkeypatch):
     assert result.output_files == ()  # no re-host in this service
     assert len(captured) == 1
     entry = captured[0]
+    # Envelope correlation id == row id (image-api parity restored 260812).
+    assert entry.id == result.ai_request_id
     assert entry.provider == "replicate"
     assert entry.status == "success"
     assert entry.operation == "retouch.image_remove_bg.replicate"

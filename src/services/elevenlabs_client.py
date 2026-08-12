@@ -1060,7 +1060,10 @@ def _log_elevenlabs_call(
     )
     log_ai_request(
         AiLogEntry(
-            id=new_request_id(), provider="elevenlabs", operation=operation,
+            # Audio is LOG-ONLY (no envelope surfaces this id) — minted at log time,
+            # not pre-call, purely for row-id parity (services/ai_usage/logger.py).
+            id=new_request_id(),
+            provider="elevenlabs", operation=operation,
             model=model_id, status=status, context=ctx or AiCallContext(),
             usage_unit="characters", usage_amount=char_count,
             provider_request_id=provider_request_id,

@@ -1,8 +1,9 @@
 """logger.py — the async fire-and-forget insert path.
 
 Asserts the row shape the phase mandates (user_id NULL, nested request.audit.source,
-no `id` column, allowlist-clean), the remix→book bridge + ctx caching, drain, and
-the two never-raise invariants (adapter failure / no running loop)."""
+client-minted `id` — image-api parity restored 260812 — allowlist-clean), the
+remix→book bridge + ctx caching, drain, and the two never-raise invariants
+(adapter failure / no running loop)."""
 
 from __future__ import annotations
 
@@ -67,9 +68,25 @@ async def test_insert_writes_expected_row(cap_adapter):
     row = cap_adapter.ai_rows[0]
     assert row["user_id"] is None
     assert row["request"]["audit"] == {"admin_ref": "admin-42", "sid": "sess-9", "source": "remix-swap-service"}
-    assert "id" not in row
+    # No entry.id passed → logger mints a fallback uuid4 (insert never fails on it).
+    assert isinstance(row["id"], uuid.UUID)
     assert isinstance(row["remix_id"], uuid.UUID)
     assert row["cost_usd"] is not None and row["cost_source"] == "token_table"
+
+
+async def test_client_minted_id_becomes_row_id(cap_adapter):
+    # The pre-call new_request_id() a choke point surfaces as ai_request_id in its
+    # envelope must be the row id — envelope id resolvable via get_ai_log.
+    rid = str(uuid.uuid4())
+    log_ai_request(_entry(AiCallContext(), id=rid))
+    await drain()
+    assert cap_adapter.ai_rows[0]["id"] == uuid.UUID(rid)
+
+
+async def test_malformed_id_falls_back_to_minted_uuid(cap_adapter):
+    log_ai_request(_entry(AiCallContext(), id="not-a-uuid"))
+    await drain()
+    assert isinstance(cap_adapter.ai_rows[0]["id"], uuid.UUID)
 
 
 async def test_book_id_resolved_from_remix_bridge_and_cached(cap_adapter):

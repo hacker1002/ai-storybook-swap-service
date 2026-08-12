@@ -400,7 +400,7 @@ async def _predict_single(
         # absent) — the raw output URL is recorded as metadata by the logger via
         # `output_urls`. Each tile is a separately-billed prediction = 1 row.
         _log_replicate_call(
-            ctx=ctx, operation=operation, model=adapter.model_id,
+            ctx=ctx, ai_request_id=rid, operation=operation, model=adapter.model_id,
             prediction=prediction, inputs=payload, status="success", output=output_url,
             output_urls=[output_url],
         )
@@ -410,7 +410,7 @@ async def _predict_single(
         # cost). 429 create-throttle keeps `prediction is None` → no row.
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation=operation, model=adapter.model_id,
+                ctx=ctx, ai_request_id=rid, operation=operation, model=adapter.model_id,
                 prediction=prediction, inputs=payload, status="error",
                 error=f"{exc.code}: {exc.message}",
             )

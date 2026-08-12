@@ -8,13 +8,26 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 |---|---|---|
 | `POST /api/retouch/image-remove-bg` | `data.media_url` luôn `null` (key vẫn render — shape giữ) | Service không có content-addressed re-host; image-api populate trên passthrough path |
 | `resource_persist` (mọi endpoint dùng save-generated-resource) | No-op parity seam — `saved`/`snapshotId`/`saveError` render null; output URLs vẫn trả bình thường | App DB không có snapshot-write path của editor; FE sub-app tự ghi qua remixes CRUD |
-| AI logging (`replicate`/`invoke`) | Không có `ai_request_id` re-host + URL-as-`output_blobs`; `output_files=()` | Kế thừa P3b — không có content_store trong service |
+| AI logging (`replicate`/`invoke`) | URL-as-`output_blobs`, KHÔNG re-host output files; `output_files=()`. (Row `id` client-mint đã KHÔI PHỤC parity 260812 — hết divergence phần id) | Không có content_store trong service |
 | 400 `VALIDATION_ERROR` body | Diagnostic nesting `error.details.fields[]` (chỉ `loc`/`msg`) thay vì `error.fields[]` (có `type`) của image-api | `status`/`code`/`message` parity; FE chỉ đọc code/message. Ghi nhận — align nếu FE bắt đầu parse fields |
 | Auth missing/invalid credential | 401 (`TOKEN_MISSING`/`TOKEN_INVALID`/`TOKEN_EXPIRED`) thay vì 403 của X-API-Key image-api | Delta chốt spec 00/08 |
 | Reaper | Scoped `params.source = 'remix-swap-service'` (image-api không scope) | Bảng `background_jobs` shared — không reap job của service khác |
 | `GET /api/jobs/status` | Endpoint MỚI (image-api không có — editor dùng realtime); `params` projection strip `admin_ref`/`sid` | Spec 07; 429 RATE_LIMITED deferred (note trong spec 07) |
 | `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
 | `POST /api/editor/auth/exchange` | Body 200 **PHẲNG** `{access_token, expires_in, admin_name?}` — endpoint editor-facing DUY NHẤT không bọc `{success,data}` envelope (error vẫn `{success,error}`) | Spec 00 + FE auth module đều viết phẳng; ADR-053 |
+
+## 2026-08-12 — AI log row `id` client-mint (khôi phục parity image-api, đảo divergence P3b)
+
+P3b chốt "DB mints `ai_service_logs.id`" — hệ quả ngầm: `rid = new_request_id()` mà gemini/replicate/upscale mint trước provider call và surface làm `ai_request_id`/`data.aiRequestId` trong envelope KHÔNG khớp row id nào trong DB (envelope id không tra ngược được — inconsistency chờ nổ khi debug/provenance). Khôi phục cơ chế image-api:
+
+- `AiLogEntry` thêm field `id` (optional); `_entry_to_row` ghi `id` (malformed/absent → logger mint uuid4 fallback, DB default thành last-resort).
+- `_AI_LOG_COLUMNS` + `"id"`; choke points wire: replicate `_log_replicate_call(ai_request_id=rid)` (12 call sites kể cả upscale_core), gemini `invoke` pass `id=rid` (2 entries), elevenlabs mint tại log time (LOG-ONLY, không envelope).
+- `get_ai_log(ai_request_id)` (P3c) giờ resolve được id từ envelope. KHÔNG migration (column `id` sẵn có, `gen_random_uuid()` chỉ là default).
+- Divergence table cập nhật: AI logging chỉ còn lệch phần KHÔNG re-host output files. Design sync: service README §6 + spec 08 bảng delta (REV 260812).
+
+## 2026-08-12 — ElevenLabs choke point: bỏ `id=` khỏi AiLogEntry (fix audio-swap fail 100%)
+
+Port miss P3b: `elevenlabs_client._log_elevenlabs_call` giữ nguyên call shape image-api `AiLogEntry(id=new_request_id(), ...)` trong khi `AiLogEntry` của service KHÔNG có field `id` (DB mints `ai_service_logs.id` — xem `services/ai_usage/logger.py`; replicate/gemini đã adapt đúng từ đầu). Mọi call ElevenLabs → `TypeError: unexpected keyword argument 'id'` ném TẠI choke point (trước cả fire-and-forget) → job audio-swap fail toàn bộ textbox ở stage narrate-script. Fix: bỏ `id=`, bỏ import `new_request_id` unused; regression test `tests/services/test_elevenlabs_logging.py` chạy construction thật (stub `log_ai_request`) — trước đây job tests mock cả client nên không bắt được.
 
 ## 2026-08-12 — `rmbgs`/`upscales` writable qua PATCH /columns (fix COLUMN_NOT_WRITABLE khi add batch)
 

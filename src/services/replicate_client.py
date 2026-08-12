@@ -4,13 +4,14 @@ P3b PORT NOTE (Phase 05 re-couple): image-api's version of this module is ALSO t
 ADR-050 Replicate choke point — every wrapper writes one `ai_service_logs` row
 (success/error) via `src.services.ai_usage`. Phase 02 ported it WITHOUT that logging;
 now that `src.services.ai_usage` exists, the choke-point logging is RE-COUPLED here.
-TWO forced divergences from image-api (this service has no content-addressed Storage
-lib): (1) the raw Replicate OUTPUT URL(s) are recorded as `output_blobs` URL metadata
+ONE forced divergence from image-api (this service has no content-addressed Storage
+lib): the raw Replicate OUTPUT URL(s) are recorded as `output_blobs` URL metadata
 by the logger (`build_ref_metadata` → `{url}`), NOT fetched+re-hosted to
-`ai-logs/outputs/`; so `ReplicatePredictionResult.output_files` stays `()`. (2)
-`AiLogEntry` has no `id` column here (the DB mints `ai_service_logs.id`), so entries
-never pass `id=`; `new_request_id()` is only a correlation id surfaced as
-`data.aiRequestId`. Everything else — official-vs-community dispatch, semaphore,
+`ai-logs/outputs/`; so `ReplicatePredictionResult.output_files` stays `()`.
+`id` parity RESTORED 260812: the pre-call `rid` is passed as `ai_request_id=` into
+`_log_replicate_call` → row `id`, so the `data.aiRequestId` surfaced in envelopes
+resolves to the log row (image-api semantics).
+Everything else — official-vs-community dispatch, semaphore,
 `create_with_429_retry`, `@traceable`, error taxonomy — is VERBATIM. Logging is
 fire-and-forget and NEVER raises into the call (`log_ai_request` swallows).
 
@@ -101,7 +102,7 @@ class ReplicatePredictionResult:
     prediction_id: str
     predict_time: float | None
     # Correlation id (uuid4) of this call — routers surface it as `data.aiRequestId`.
-    # NOT the row id (the DB mints `ai_service_logs.id`). Populated at the choke.
+    # ALSO the `ai_service_logs.id` row id (parity 260812). Populated at the choke.
     ai_request_id: str = ""
     # Always () in this service: raw output URL(s) are recorded as `{url}` metadata
     # inside the logger (no content-addressed re-hosting lib here).
@@ -278,6 +279,7 @@ def _log_replicate_call(
     prediction,
     inputs: dict,
     status: str,
+    ai_request_id: str | None = None,
     output=None,
     error=None,
     num_outputs: int = 1,
@@ -288,7 +290,8 @@ def _log_replicate_call(
     Called ONLY after a prediction was created (a 429 create-throttle logs nothing).
     `usage_unit` is ALWAYS 'seconds' (`predict_time`). Cost is billed per_output on
     success only. Raw output URL(s) → `output_blobs` (recorded as `{url}` metadata by
-    the logger — no re-host, the swap-service divergence). NO `id=` (DB mints it)."""
+    the logger — no re-host, the swap-service divergence). `ai_request_id` = the
+    pre-call `rid` the caller surfaces in its envelope → row `id` (parity 260812)."""
     ptime = _extract_predict_time(prediction) if prediction is not None else None
     pid = (getattr(prediction, "id", "") or None) if prediction is not None else None
     cost = (
@@ -298,6 +301,7 @@ def _log_replicate_call(
     )
     log_ai_request(
         AiLogEntry(
+            id=ai_request_id,
             provider="replicate", operation=operation, model=model,
             status=status, context=ctx, provider_request_id=pid,
             usage_unit="seconds", usage_amount=ptime, cost=cost,
@@ -386,7 +390,7 @@ async def run_sam3_segment(
         prediction_id = getattr(prediction, "id", "") or ""
         predict_time = _extract_predict_time(prediction)
         _log_replicate_call(
-            ctx=ctx, operation="sam3_image_segment", model=model,
+            ctx=ctx, ai_request_id=rid, operation="sam3_image_segment", model=model,
             prediction=prediction, inputs=payload, status="success",
             output=mask_url, output_urls=[mask_url],
         )
@@ -401,7 +405,7 @@ async def run_sam3_segment(
         # `prediction is None` → no row (no billing occurred).
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation="sam3_image_segment", model=model,
+                ctx=ctx, ai_request_id=rid, operation="sam3_image_segment", model=model,
                 prediction=prediction, inputs=payload, status="error", error=exc.detail,
             )
         raise
@@ -583,7 +587,7 @@ async def run_layering(
             prediction_id[:10],
         )
         _log_replicate_call(
-            ctx=ctx, operation="retouch.layering_image.replicate", model=QWEN_LAYERED_MODEL,
+            ctx=ctx, ai_request_id=rid, operation="retouch.layering_image.replicate", model=QWEN_LAYERED_MODEL,
             prediction=prediction, inputs=payload, status="success",
             output=urls, output_urls=urls, num_outputs=len(urls),
         )
@@ -596,7 +600,7 @@ async def run_layering(
     except HTTPException as exc:
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation="retouch.layering_image.replicate", model=QWEN_LAYERED_MODEL,
+                ctx=ctx, ai_request_id=rid, operation="retouch.layering_image.replicate", model=QWEN_LAYERED_MODEL,
                 prediction=prediction, inputs=payload, status="error", error=exc.detail,
             )
         raise
@@ -721,7 +725,7 @@ async def run_remove_bg(
             prediction_id[:10],
         )
         _log_replicate_call(
-            ctx=ctx, operation=effective_operation, model=resolved_model,
+            ctx=ctx, ai_request_id=rid, operation=effective_operation, model=resolved_model,
             prediction=prediction, inputs=payload, status="success",
             output=output_url, output_urls=[output_url],
         )
@@ -734,7 +738,7 @@ async def run_remove_bg(
     except HTTPException as exc:
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation=effective_operation, model=resolved_model,
+                ctx=ctx, ai_request_id=rid, operation=effective_operation, model=resolved_model,
                 prediction=prediction, inputs=payload, status="error", error=exc.detail,
             )
         raise
@@ -847,7 +851,7 @@ async def run_remove_text(
             prediction_id[:10],
         )
         _log_replicate_call(
-            ctx=ctx, operation="retouch.remove_text_image.replicate", model=resolved_model,
+            ctx=ctx, ai_request_id=rid, operation="retouch.remove_text_image.replicate", model=resolved_model,
             prediction=prediction, inputs=payload, status="success",
             output=output_url, output_urls=[output_url],
         )
@@ -860,7 +864,7 @@ async def run_remove_text(
     except HTTPException as exc:
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation="retouch.remove_text_image.replicate", model=resolved_model,
+                ctx=ctx, ai_request_id=rid, operation="retouch.remove_text_image.replicate", model=resolved_model,
                 prediction=prediction, inputs=payload, status="error", error=exc.detail,
             )
         raise
@@ -999,7 +1003,7 @@ async def run_face_to_many(
             prediction_id[:10],
         )
         _log_replicate_call(
-            ctx=ctx, operation="image.normalize_human.replicate", model=FACE_TO_MANY_MODEL,
+            ctx=ctx, ai_request_id=rid, operation="image.normalize_human.replicate", model=FACE_TO_MANY_MODEL,
             prediction=prediction, inputs=payload, status="success",
             output=output_url, output_urls=[output_url],
         )
@@ -1012,7 +1016,7 @@ async def run_face_to_many(
     except HTTPException as exc:
         if prediction is not None:
             _log_replicate_call(
-                ctx=ctx, operation="image.normalize_human.replicate", model=FACE_TO_MANY_MODEL,
+                ctx=ctx, ai_request_id=rid, operation="image.normalize_human.replicate", model=FACE_TO_MANY_MODEL,
                 prediction=prediction, inputs=payload, status="error", error=exc.detail,
             )
         raise
