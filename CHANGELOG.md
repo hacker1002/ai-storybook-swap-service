@@ -16,6 +16,10 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
 | `POST /api/editor/auth/exchange` | Body 200 **PHẲNG** `{access_token, expires_in, admin_name?}` — endpoint editor-facing DUY NHẤT không bọc `{success,data}` envelope (error vẫn `{success,error}`) | Spec 00 + FE auth module đều viết phẳng; ADR-053 |
 
+## 2026-08-12 — Storage REST shim: thêm `apikey` header (fix 400 Invalid Compact JWS)
+
+`SupabaseRestStorage._auth_headers` chỉ gửi `Authorization: Bearer <key>`. Với key format mới `sb_secret_...` (không phải JWT), gateway parse Bearer như JWS → 400 `Invalid Compact JWS` trên mọi upload/sign/delete (sprite-swap job fail `swapped=0 failed=1`). Fix: gửi kèm header `apikey: <key>` (giống supabase-py — lý do image-api không dính). Legacy JWT key không bị ảnh hưởng. Live-verified upload 200 trên local Supabase.
+
 ## 2026-08-12 — Editor session lifecycle về swap service (ADR-053)
 
 Service GIỜ SỞ HỮU session lifecycle (trước chỉ verify). Bỏ refresh token → **1 access token flat 12h**.

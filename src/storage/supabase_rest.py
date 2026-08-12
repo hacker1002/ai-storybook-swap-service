@@ -64,7 +64,11 @@ class SupabaseRestStorage:
         return bucket or self._default_bucket
 
     def _auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._key}"}
+        # New-format keys (sb_secret_...) are NOT JWTs: the gateway resolves them
+        # from the `apikey` header, while `Authorization: Bearer` alone gets parsed
+        # as a JWS and 400s ("Invalid Compact JWS"). supabase-py sends both, so the
+        # REST shim must too; legacy JWT keys accept the duplicate harmlessly.
+        return {"Authorization": f"Bearer {self._key}", "apikey": self._key}
 
     def _object_url(self, bucket: str, path: str) -> str:
         return f"{self._base}/storage/v1/object/{bucket}/{path.lstrip('/')}"
