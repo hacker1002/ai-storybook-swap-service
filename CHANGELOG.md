@@ -14,6 +14,18 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | Reaper | Scoped `params.source = 'remix-swap-service'` (image-api không scope) | Bảng `background_jobs` shared — không reap job của service khác |
 | `GET /api/jobs/status` | Endpoint MỚI (image-api không có — editor dùng realtime); `params` projection strip `admin_ref`/`sid` | Spec 07; 429 RATE_LIMITED deferred (note trong spec 07) |
 | `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
+| `POST /api/editor/auth/exchange` | Body 200 **PHẲNG** `{access_token, expires_in, admin_name?}` — endpoint editor-facing DUY NHẤT không bọc `{success,data}` envelope (error vẫn `{success,error}`) | Spec 00 + FE auth module đều viết phẳng; ADR-053 |
+
+## 2026-08-12 — Editor session lifecycle về swap service (ADR-053)
+
+Service GIỜ SỞ HỮU session lifecycle (trước chỉ verify). Bỏ refresh token → **1 access token flat 12h**.
+
+- **NEW `POST /api/editor/auth/exchange`** (public, no Bearer): verify handoff assertion (`aud=remix-editor-handoff`, secret SHARED `REMIX_EDITOR_HANDOFF_SECRET`) → one-time `jti` + hard clamp `exp-iat ≤ 60s(+margin)` + rate-limit per-IP → mint access token 12h. Body 200 **phẳng** (divergence trên). Mọi lỗi assertion → 401 `HANDOFF_INVALID` (không phân biệt hoá — anti-oracle). `Cache-Control: no-store`.
+- **NEW `POST /internal/auth/revoke`** (S2S `X-API-Key: INTERNAL_API_KEY`, **fail-closed** — key rỗng ⇒ 401 + boot warning): ghi `sid`/`admin_ref` vào denylist in-memory. Idempotent. `≥1` field (thiếu cả 2 → 400 VALIDATION_ERROR).
+- **Verify +bước 8 denylist** (SAU role): revoked → `TOKEN_INVALID` (không code riêng). Revoked viewer vẫn `FORBIDDEN` (thứ tự role-trước-denylist).
+- **Ràng buộc SINGLE-PROCESS** (`used_jti` + denylist + rate-limit in-memory): `workers=1` bắt buộc — `scripts/run-service.sh` pin `--workers 1`; boot guard reject `WEB_CONCURRENCY`/`UVICORN_WORKERS` >1 (KHÔNG bắt được `--workers N` qua CLI). Restart mất denylist (chấp nhận — App re-push tuỳ chọn).
+- **Env mới**: `REMIX_EDITOR_HANDOFF_SECRET` (required, shared App), `INTERNAL_API_KEY` (default rỗng, fail-closed), `EDITOR_ACCESS_TOKEN_TTL_SECONDS`=43200, `AUTH_EXCHANGE_RATE_LIMIT_PER_MIN`=20. `REMIX_EDITOR_TOKEN_SECRET` GIỜ local-only (mint+verify), mint dùng secret cuối (`[-1]`).
+- **Dev CLI**: `scripts/mint_dev_handoff_url.py` (chính — in assertion + URL browser `#handoff=`); `mint_dev_editor_token.py` hạ cấp test-harness (`--mode handoff|access`).
 
 ## 2026-08-12 — sync design chốt 260812 (casting-phía-App + clone rev 2)
 

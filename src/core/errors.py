@@ -60,6 +60,20 @@ def forbidden(message: str = "Forbidden") -> ServiceError:
     return ServiceError("FORBIDDEN", 403, message)
 
 
+def handoff_invalid(message: str = "Invalid handoff assertion") -> ServiceError:
+    """Any failure exchanging a handoff assertion (bad sig / expired / wrong aud /
+    replayed / bad alg) collapses to ONE code — never distinguish, to deny an oracle."""
+    return ServiceError("HANDOFF_INVALID", 401, message)
+
+
+def api_key_invalid(message: str = "Invalid or missing API key") -> ServiceError:
+    return ServiceError("API_KEY_INVALID", 401, message)
+
+
+def rate_limited(message: str = "Too many requests") -> ServiceError:
+    return ServiceError("RATE_LIMITED", 429, message)
+
+
 def validation_error(message: str, details: dict | None = None) -> ServiceError:
     return ServiceError("VALIDATION_ERROR", 400, message, details)
 

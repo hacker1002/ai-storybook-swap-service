@@ -22,4 +22,14 @@ r="$(req GET "$P" "" "$(mint_token --role viewer)")"; assert_status 403 "$r" "vi
 # 8 valid (200 if book exists, else 404 — either proves auth passed)
 r="$(req GET "$P")"; s="$(echo "$r" | tail -1)"
 if [ "$s" = "200" ] || [ "$s" = "404" ]; then echo "  ✅ valid token passed auth (HTTP $s)"; else echo "  ❌ valid token — got $s"; FAILED=1; fi
+
+# 9 revoked token -> 401 TOKEN_INVALID (denylist, spec 00 §5 — NOT a distinct code).
+# Mint a token with a known sid, revoke that sid via S2S, then verify it is rejected.
+REVOKE_SID="verify-revoked-$(date +%s)"
+REVOKED_TOK="$(mint_token --sid "$REVOKE_SID")"
+curl -s -X POST "$BASE_URL/internal/auth/revoke" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ${INTERNAL_API_KEY:-dev-internal-key-change-me}" \
+  -d "{\"sid\":\"$REVOKE_SID\"}" >/dev/null
+r="$(req GET "$P" "" "$REVOKED_TOK")"; assert_status 401 "$r" "revoked token"; assert_error_code TOKEN_INVALID "$r" "revoked token code"
 finish

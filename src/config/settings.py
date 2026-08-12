@@ -25,10 +25,16 @@ class Settings(BaseSettings):
     # (postgresql://postgres:postgres@127.0.0.1:54322/postgres). Contains
     # credentials → never logged (log host/db name only).
     app_db_url: str
-    # Shared HS256 secret with the Admin App backend that MINTS editor-session
-    # tokens. Distinct from Supabase JWT secret AND player token secret. Accepts a
-    # comma-separated LIST for rotation (old,new) — see `editor_token_secrets`.
+    # HS256 secret used to MINT + verify editor-session access tokens. After ADR-053
+    # this service OWNS minting (exchange endpoint), so the secret is LOCAL-ONLY —
+    # never shared with the Admin App, never logged, never returned to a client.
+    # Accepts a comma-separated LIST for rotation (old,new) — see `editor_token_secrets`
+    # (mint uses the LAST entry; verify accepts any).
     remix_editor_token_secret: str
+    # Shared HS256 secret with the Admin App backend that signs the short-lived
+    # HANDOFF ASSERTION (aud=remix-editor-handoff) exchanged at /api/editor/auth/exchange.
+    # THIS is the only auth secret shared with App. Comma-list for rotation.
+    remix_editor_handoff_secret: str
 
     # --- DB pool (Phase 02; ceiling raised to 20 in P3b — jobs run concurrent AI
     #     handlers, acquire-per-query, so the pool must not starve under load) ----
@@ -45,6 +51,13 @@ class Settings(BaseSettings):
 
     # --- Auth (Phase 03) ----------------------------------------------------
     editor_token_leeway_seconds: int = 30
+    # Access-token lifetime minted at exchange. Flat 12h (ADR-053 — no refresh).
+    editor_access_token_ttl_seconds: int = 43200
+    # S2S key guarding POST /internal/auth/revoke. Empty => FAIL-CLOSED (revoke
+    # disabled, boot warning) so the service still runs before Admin App P2 exists.
+    internal_api_key: str = ""
+    # Per-IP sliding-window cap on the public (no-Bearer) exchange endpoint.
+    auth_exchange_rate_limit_per_min: int = 20
 
     # --- Request / CORS -----------------------------------------------------
     # 20MB body cap for POST/PATCH (spec 04/05 payload-bomb guard).
@@ -95,6 +108,12 @@ class Settings(BaseSettings):
         second secret during a rotation window is NOT a contract change. Splits the
         comma-separated `remix_editor_token_secret`; empties dropped."""
         return [s.strip() for s in self.remix_editor_token_secret.split(",") if s.strip()]
+
+    @cached_property
+    def editor_handoff_secrets(self) -> list[str]:
+        """Rotation-ready handoff-assertion secret list (mirrors `editor_token_secrets`).
+        Verify tries each; the Admin App signs with one of them."""
+        return [s.strip() for s in self.remix_editor_handoff_secret.split(",") if s.strip()]
 
     @cached_property
     def cors_origins(self) -> list[str]:

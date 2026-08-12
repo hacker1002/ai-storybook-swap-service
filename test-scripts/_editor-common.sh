@@ -5,14 +5,22 @@
 
 BASE_URL="${BASE_URL:-http://localhost:8100}"
 export REMIX_EDITOR_TOKEN_SECRET="${REMIX_EDITOR_TOKEN_SECRET:-dev-remix-editor-secret-change-me}"
+export REMIX_EDITOR_HANDOFF_SECRET="${REMIX_EDITOR_HANDOFF_SECRET:-dev-remix-handoff-secret-change-me}"
+# NOTE: deliberately NOT setting any X-API-Key / S2S header here — the S2S guard is
+# revoke-only and each S2S script sets INTERNAL_API_KEY locally (image-api copy bug).
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES="$_SCRIPT_DIR/fixtures/local-ids.env"
 [ -f "$FIXTURES" ] && source "$FIXTURES"
 
-# mint_token [extra flags...] -> prints token
+# mint_token [extra flags...] -> prints an ACCESS token (harness — forged tokens)
 mint_token() {
   (cd "$_SCRIPT_DIR/.." && uv run python scripts/mint_dev_editor_token.py "$@" 2>/dev/null)
+}
+
+# mint_handoff [extra flags...] -> prints a handoff assertion (exchange input)
+mint_handoff() {
+  (cd "$_SCRIPT_DIR/.." && uv run python scripts/mint_dev_editor_token.py --mode handoff "$@" 2>/dev/null)
 }
 
 # req METHOD PATH [json_body] [token]  -> prints "HTTP_STATUS\n<body>"

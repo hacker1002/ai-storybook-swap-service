@@ -52,15 +52,34 @@ no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 ## Auth
 
 `Authorization: Bearer <editor-session JWT>` (HS256, `aud=remix-editor`,
-`role=admin`). The service **only verifies** — mint/refresh/revoke belong to the
-Admin App backend. Secret: `REMIX_EDITOR_TOKEN_SECRET` (distinct from Supabase JWT
-/ player token secrets; comma-separated list for rotation). `/health` is ungated.
+`role=admin`). Since **ADR-053** the service OWNS the session lifecycle — it
+mints, verifies, and revokes:
 
-Dev token mint (the Admin App mint endpoint does not exist yet — P2):
+- **`POST /api/editor/auth/exchange`** (public, no Bearer) — verifies a 60s handoff
+  assertion (`aud=remix-editor-handoff`, signed by the Admin App with the SHARED
+  `REMIX_EDITOR_HANDOFF_SECRET`), enforces one-time `jti` + a hard 60s TTL clamp +
+  per-IP rate limit, and mints a **flat 12h** access token. No refresh token.
+- **`POST /internal/auth/revoke`** (S2S `X-API-Key: INTERNAL_API_KEY`, fail-closed)
+  — adds a `sid` or `admin_ref` to an in-memory denylist checked on every request.
+
+Secrets: `REMIX_EDITOR_TOKEN_SECRET` (LOCAL-ONLY — mints/verifies access tokens;
+comma-list for rotation, mint uses the newest), `REMIX_EDITOR_HANDOFF_SECRET`
+(SHARED with the Admin App), `INTERNAL_API_KEY` (S2S revoke guard). `/health` +
+`/api/editor/auth/exchange` are the only ungated editor-facing paths.
+
+> **Single-process only.** `used_jti` + denylist + rate limiter are in-memory ⇒ the
+> service MUST run `workers=1` (use `scripts/run-service.sh`). Restart clears the
+> denylist (ADR-053 trade-off — App may re-push revokes).
+
+Dev flow (the Admin App mint endpoint does not exist yet — P2):
 
 ```bash
-uv run python scripts/mint_dev_editor_token.py            # valid admin token
-uv run python scripts/mint_dev_editor_token.py --expired  # negative-path token
+# PRIMARY — mint a handoff assertion + print a ready-to-paste browser deeplink
+uv run python scripts/mint_dev_handoff_url.py --book-id <BOOK_ID> [--remix-id <ID>]
+
+# Test-harness only — forge access tokens the exchange endpoint CANNOT produce
+uv run python scripts/mint_dev_editor_token.py --mode access --expired   # negative-path
+uv run python scripts/mint_dev_editor_token.py --mode handoff            # raw assertion
 ```
 
 ## Deliberate Divergences from image-api
@@ -74,15 +93,20 @@ Unlike `ai-storybook-image-api` (which this is a fork of), the Remix Swap Servic
 - **Storage**: httpx REST to Supabase Storage (no `supabase-py` SDK)
 - **LangSmith project**: `remix-swap-service` (separate from image-api)
 - **Remix sync routes** (`/api/remix/*`): internal/test only; keep image-api `RemixDomainError` envelope (no FE consumer today)
+- **Exchange response body** (`POST /api/editor/auth/exchange`): FLAT `{access_token, expires_in, admin_name?}` — the ONLY editor-facing endpoint that does NOT use the `{success,data}` envelope (spec 00 + FE auth module both specify flat). Error paths keep the `{success,error}` envelope.
 
 ## Run
 
 ```bash
 uv sync
-cp .env.example .env          # fill APP_DB_URL + REMIX_EDITOR_TOKEN_SECRET
-uv run uvicorn src.main:app --reload --port 8100
+cp .env.example .env          # fill APP_DB_URL + REMIX_EDITOR_TOKEN_SECRET + REMIX_EDITOR_HANDOFF_SECRET [+ INTERNAL_API_KEY]
+./scripts/run-service.sh      # canonical entry — pins --workers 1 (ADR-053, in-memory stores)
 curl 'http://localhost:8100/health?db=1'
 ```
+
+**Do NOT** run `uvicorn ... --workers N` (N>1) or set `WEB_CONCURRENCY`/`UVICORN_WORKERS`
+> 1 — the denylist/jti/rate-limit stores are single-process (ADR-053). The boot guard
+rejects the env-var path; `scripts/run-service.sh` is the supported command.
 
 ## Test
 

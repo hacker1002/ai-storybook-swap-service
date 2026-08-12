@@ -26,8 +26,10 @@ from src.db.pool import close_pool, create_pool, get_pool
 from src.db.postgres_adapter import PostgresAppDbAdapter
 from src.jobs import reaper_loop, wait_all
 from src.jobs.config import SHUTDOWN_TIMEOUT_SEC
+from src.routers.auth.router import router as auth_router
 from src.routers.editor.router import router as editor_router
 from src.routers.image.error_handler import image_domain_error_handler
+from src.routers.internal.router import router as internal_router
 from src.routers.image.router import router as image_router
 from src.routers.jobs.router import router as jobs_router
 from src.routers.provenance.router import router as provenance_router
@@ -48,10 +50,33 @@ _SKIP_LOG_PATHS = {"/health", "/docs", "/redoc", "/openapi.json", "/favicon.ico"
 _BODY_METHODS = {"POST", "PATCH", "PUT"}
 
 
+def _guard_single_process() -> None:
+    """ADR-053: `used_jti` + denylist + rate-limit are in-memory, single-process. Fail
+    boot if a multi-worker env var is set (each worker would hold an independent copy →
+    replayable jti + partial revoke). CANNOT catch `--workers N` passed on the uvicorn
+    CLI — the wrapper `scripts/run-service.sh` is the primary safeguard; this only
+    catches the env-var path. Move stores to Redis/DB BEFORE scaling out."""
+    import os
+
+    for var in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        raw = os.environ.get(var)
+        if raw and raw.strip() not in ("", "1"):
+            raise RuntimeError(
+                f"{var}={raw!r} but the Remix Swap Service MUST run single-process "
+                "(ADR-053: in-memory jti/denylist). Set workers=1 or migrate stores first."
+            )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Open the asyncpg pool + wire the adapter on startup; close on shutdown."""
     logger.info("lifespan_startup")
+    _guard_single_process()
+    if not settings.internal_api_key:
+        logger.warning(
+            "internal_api_key_unset",
+            extra={"data": {"effect": "POST /internal/auth/revoke disabled (fail-closed) until INTERNAL_API_KEY is set"}},
+        )
     pool = await create_pool()
     set_adapter(PostgresAppDbAdapter(pool))
     # Storage seam: Supabase Storage REST over httpx (NO SDK). Construction is
@@ -158,7 +183,11 @@ async def body_size_and_access_log(request: Request, call_next):
     return response
 
 
+# auth_router (public exchange, NO Bearer) BEFORE editor_router (Bearer-gated) — same
+# /api/editor prefix, disjoint path space (/auth/*). internal_router is S2S (X-API-Key).
+app.include_router(auth_router)
 app.include_router(editor_router)
+app.include_router(internal_router)
 app.include_router(jobs_router)
 app.include_router(remix_router)
 # P3c — ported retouch (edit-object-image, image-remove-bg) + image (upscale-image)

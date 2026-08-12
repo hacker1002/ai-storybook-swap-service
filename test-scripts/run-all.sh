@@ -15,7 +15,9 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Order matters: auth first, then the read probe, then create (seeds REMIX_ID),
 # then everything that consumes REMIX_ID, then delete last.
 SCRIPTS=(
-  test-auth-verify.sh        # auth matrix (spec 00) — no state
+  test-auth-exchange.sh      # spec 00 §1 — handoff -> access token (no Bearer)
+  test-auth-revoke.sh        # spec 00 §3 — S2S revoke -> denylist
+  test-auth-verify.sh        # auth matrix (spec 00) — no state (+revoked case)
   test-get-book-bundle.sh    # spec 01 — read only
   test-create-remix.sh       # spec 04 — WRITES REMIX_ID to fixtures
   test-list-remixes.sh       # spec 02

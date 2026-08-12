@@ -1,9 +1,12 @@
 """Editor-session JWT verification (spec 00 / auth spec §2.1, §3.3, §5).
 
-The service ONLY verifies — never mints/refreshes/revokes (that is the Admin App
-backend). Stateless, no I/O. Verify order is MANDATORY (spec 00): missing ->
-malformed -> signature/alg -> aud -> exp -> role. Getting the order wrong leaks
-info (an expired token from another app must read as TOKEN_INVALID, not EXPIRED).
+Since ADR-053 the service also MINTS (exchange) + REVOKES (denylist). This module
+still only VERIFIES; minting lives in `mint_editor_token.py`, the denylist in
+`session_stores.py`. Verification stays sync + no external I/O (the denylist is an
+in-memory dict lookup). Verify order is MANDATORY (spec 00): missing -> malformed ->
+signature/alg -> aud -> exp -> role -> denylist. Getting the order wrong leaks info
+(an expired token from another app must read as TOKEN_INVALID, not EXPIRED; a
+revoked token must fail role-check FIRST so a viewer still reads as FORBIDDEN).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ import time
 import jwt
 from fastapi import Header
 
+from src.auth.session_stores import is_revoked
 from src.config.settings import settings
 from src.core.errors import forbidden, token_expired, token_invalid, token_missing
 from src.core.logging import get_logger
@@ -81,6 +85,12 @@ def verify_editor_session(authorization: str | None) -> EditorSessionContext:
     sid = claims.get("sid")
     if not isinstance(admin_ref, str) or not admin_ref or not isinstance(sid, str) or not sid:
         raise token_invalid("admin_ref and sid required")
+
+    # 8. denylist (ADR-053) — AFTER role so a revoked viewer still reads FORBIDDEN.
+    # Revoked collapses to TOKEN_INVALID (NO distinct code — anti-oracle, spec §3.3).
+    if is_revoked(sid, admin_ref):
+        logger.warning("token_revoked", extra={"data": {"sid": sid, "admin_ref": admin_ref}})
+        raise token_invalid()
 
     consumer = claims.get("consumer")
     return EditorSessionContext(
