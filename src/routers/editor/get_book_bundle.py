@@ -1,9 +1,13 @@
 """GET /api/editor/book-bundle/{book_id} (spec 01).
 
-The sub-app's single bootstrap read: book + FULL current snapshot + artStyle +
-humans + voices. EDITOR-GRADE — NO layer filtering (unlike player get-book-preview;
-copying that would drop data the editor needs). Snapshot missing => 404 (data
-integrity: a broken clone), never 200-with-null.
+The sub-app's single bootstrap read: book + FULL current snapshot + humans + voices.
+EDITOR-GRADE — NO layer filtering (unlike player get-book-preview; copying that
+would drop data the editor needs). Snapshot missing => 404 (data integrity: a broken
+clone), never 200-with-null.
+
+`artStyle` is retained in the contract (additive-only) but is ALWAYS null: App DB
+rev 2 does not clone `art_styles` and drops `books.artstyle_id`
+(spec 01 + app-db-clone-tables §Hệ quả swap-service, 260812).
 """
 
 from __future__ import annotations
@@ -28,12 +32,8 @@ async def get_book_bundle(book_id: UUID) -> dict:
     if snapshot is None:
         raise not_found("Current snapshot not found")
 
-    # Independent reads in parallel once book is known. art_style skipped when the
-    # book has no artstyle_id (-> artStyle: null, still 200).
-    art_style_id = book.get("artstyle_id")
-    art_style_task = adapter.get_art_style(art_style_id) if art_style_id else _none()
-    art_style, humans, voices = await asyncio.gather(
-        art_style_task,
+    # Independent reads in parallel once book is known.
+    humans, voices = await asyncio.gather(
         adapter.list_humans(book_id),
         adapter.list_voices(book_id),
     )
@@ -44,12 +44,9 @@ async def get_book_bundle(book_id: UUID) -> dict:
             "contractVersion": _CONTRACT_VERSION,
             "book": book,
             "snapshot": snapshot,
-            "artStyle": art_style,
+            # Contract-parity constant; App DB rev 2 clones no art_styles (see module docstring).
+            "artStyle": None,
             "humans": humans,
             "voices": voices,
         },
     }
-
-
-async def _none() -> None:
-    return None

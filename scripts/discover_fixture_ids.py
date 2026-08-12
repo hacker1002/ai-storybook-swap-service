@@ -33,6 +33,12 @@ async def main() -> None:
     remix_id = remix["id"] if remix else ""
     job = await conn.fetchrow("SELECT id FROM background_jobs LIMIT 1")
     job_id = job["id"] if job else ""
+    # spec 10 — a snapshot that actually HAS actors rows (may differ from the primary
+    # SNAPSHOT_ID). Empty when the table is bare; test-list-actors.sh falls back to
+    # SNAPSHOT_ID and asserts only the empty-branch. Table `actors` is owned by the
+    # ops clone process — do NOT seed/DDL it here.
+    actors = await conn.fetchrow("SELECT snapshot_id FROM actors ORDER BY created_at ASC LIMIT 1")
+    actors_snapshot_id = actors["snapshot_id"] if actors else ""
     await conn.close()
 
     _OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -42,12 +48,14 @@ async def main() -> None:
         f"SNAPSHOT_ID={snapshot_id}\n"
         f"REMIX_ID={remix_id}\n"
         f"JOB_ID={job_id}\n"
+        f"ACTORS_SNAPSHOT_ID={actors_snapshot_id}\n"
     )
     print(f"Wrote {_OUT}")
     print(f"  BOOK_ID={book_id}")
     print(f"  SNAPSHOT_ID={snapshot_id}")
     print(f"  REMIX_ID={remix_id or '(none — create via test-create-remix.sh)'}")
     print(f"  JOB_ID={job_id or '(none)'}")
+    print(f"  ACTORS_SNAPSHOT_ID={actors_snapshot_id or '(none — actors table empty)'}")
 
 
 if __name__ == "__main__":

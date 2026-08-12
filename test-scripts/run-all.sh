@@ -19,6 +19,7 @@ SCRIPTS=(
   test-get-book-bundle.sh    # spec 01 — read only
   test-create-remix.sh       # spec 04 — WRITES REMIX_ID to fixtures
   test-list-remixes.sh       # spec 02
+  test-list-actors.sh        # spec 10 — read only (casting-phía-App)
   test-get-remix.sh          # spec 03 — reads REMIX_ID
   test-update-remix-columns.sh # spec 05 — reads REMIX_ID
   test-get-job-status.sh     # spec 07

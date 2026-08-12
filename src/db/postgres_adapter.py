@@ -66,10 +66,18 @@ class PostgresAppDbAdapter:
             row = await conn.fetchrow("SELECT * FROM snapshots WHERE id = $1", snapshot_id)
         return dict(row) if row else None
 
-    async def get_art_style(self, art_style_id: UUID) -> dict | None:
+    async def list_actors(self, snapshot_id: UUID) -> list[dict]:
+        """All `actors` rows for a snapshot (spec 10 — casting resolve phía App).
+        Anchored on `snapshot_id` (parity with `list_remixes`); NO filter on pipeline
+        completeness — the sub-app reads `rmbgs`/`upscales` batch state itself to
+        disable presets, so filtering here would break its pipeline UI. `SELECT *`
+        keeps it additive-friendly (new columns flow through untouched)."""
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM art_styles WHERE id = $1", art_style_id)
-        return dict(row) if row else None
+            rows = await conn.fetch(
+                "SELECT * FROM actors WHERE snapshot_id = $1 ORDER BY created_at ASC",
+                snapshot_id,
+            )
+        return [dict(r) for r in rows]
 
     async def list_humans(self, book_id: UUID) -> list[dict]:
         """`humans` has NO book_id column — the editor loads them GLOBALLY

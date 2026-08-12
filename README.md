@@ -11,8 +11,9 @@ no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 
 | Endpoint | Spec |
 |---|---|
-| `GET  /api/editor/book-bundle/{book_id}` | 01 — bootstrap read (book + full snapshot + artStyle + humans + voices) |
+| `GET  /api/editor/book-bundle/{book_id}` | 01 — bootstrap read (book + full snapshot + humans + voices; `artStyle` always null — App DB rev 2 clones no `art_styles`) |
 | `GET  /api/editor/remixes?snapshot_id=` | 02 — list |
+| `GET  /api/editor/actors?snapshot_id=` | 10 — list actors (casting resolve phía App; full rows, no pipeline filter) |
 | `GET  /api/editor/remixes/{id}` | 03 — get |
 | `POST /api/editor/remixes` | 04 — create |
 | `PATCH /api/editor/remixes/{id}/columns` | 05 — update writable columns |

@@ -19,9 +19,10 @@ class FakeAppDbAdapter:
     def __init__(self) -> None:
         self.books: dict[str, dict] = {}
         self.snapshots: dict[str, dict] = {}
-        self.art_styles: dict[str, dict] = {}
         self.humans: list[dict] = []
         self.voices: list[dict] = []
+        # spec 10 — seed via `seed("actors", [...])` (list -> extend branch).
+        self.actors: list[dict] = []
         self.remixes: dict[str, dict] = {}
         self.jobs: dict[str, dict] = {}
         # keyed by `name` (the prompt_templates key column), NOT `id` — seed via
@@ -64,9 +65,9 @@ class FakeAppDbAdapter:
         self._maybe_fail("get_snapshot")
         return self.snapshots.get(str(snapshot_id))
 
-    async def get_art_style(self, art_style_id: UUID) -> dict | None:
-        self._maybe_fail("get_art_style")
-        return self.art_styles.get(str(art_style_id))
+    async def list_actors(self, snapshot_id: UUID) -> list[dict]:
+        self._maybe_fail("list_actors")
+        return [a for a in self.actors if str(a.get("snapshot_id")) == str(snapshot_id)]
 
     async def list_humans(self, book_id: UUID) -> list[dict]:
         self._maybe_fail("list_humans")

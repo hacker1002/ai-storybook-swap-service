@@ -13,6 +13,13 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | Auth missing/invalid credential | 401 (`TOKEN_MISSING`/`TOKEN_INVALID`/`TOKEN_EXPIRED`) thay vì 403 của X-API-Key image-api | Delta chốt spec 00/08 |
 | Reaper | Scoped `params.source = 'remix-swap-service'` (image-api không scope) | Bảng `background_jobs` shared — không reap job của service khác |
 | `GET /api/jobs/status` | Endpoint MỚI (image-api không có — editor dùng realtime); `params` projection strip `admin_ref`/`sid` | Spec 07; 429 RATE_LIMITED deferred (note trong spec 07) |
+| `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
+
+## 2026-08-12 — sync design chốt 260812 (casting-phía-App + clone rev 2)
+
+- **NEW `GET /api/editor/actors?snapshot_id=`** (spec 10) — read-only full `actors` rows, order `created_at ASC`, no pipeline-completeness filter (FE reads batch state to disable presets). Editor-native ⇒ liệt kê ở bảng Divergences cùng nhóm `/api/jobs/status`. Snapshot lạ → `[]` (200, không 404 — parity `list_remixes`).
+- **`get_art_style` bỏ khỏi adapter surface** (thu hẹp `AppDbAdapter` §7). App DB rev 2 không clone `art_styles` và drop `books.artstyle_id` ⇒ `book-bundle` (spec 01) hardcode `artStyle: null` (key GIỮ — additive-only). Live-verified: bundle trả null kể cả khi book Editor-schema còn `artstyle_id` populated.
+- Audit cột `books` bị drop (`format_id`/`era_id`/`location_id`/`sketchstyle_id`/`template_layout` + `sound`/`music` transform): **zero call site** trong `src/` — `get_book` đọc full row qua `.get()`, cột vắng → None. `ART_STYLE_SHEET` trong `reference_prompt_builder.py` GIỮ nguyên (parity port, refs qua request payload — không query `art_styles`).
 
 ## 2026-08-11 — review compliance fixes (post-P3c)
 
