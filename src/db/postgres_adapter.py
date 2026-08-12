@@ -145,10 +145,11 @@ class PostgresAppDbAdapter:
 
     async def update_remix_job_column(self, remix_id: UUID, column: str, value) -> bool:
         """UPDATE a single JOB_ONLY JSONB column (`rmbgs`/`upscales`) — the P3b
-        crop-pipeline stage handlers' single-writer full-column write. The column
-        name comes ONLY from the `JOB_ONLY_COLUMNS` allowlist (never interpolated
-        from request data), value via placeholder. Raises on any other column so a
-        WRITABLE column can never be reached through this seam by mistake."""
+        crop-pipeline stage handlers' full-column write. The column name comes
+        ONLY from the `JOB_ONLY_COLUMNS` allowlist (never interpolated from
+        request data), value via placeholder. Raises on any other column so this
+        seam stays scoped to the two stage-result columns (which the editor may
+        ALSO PATCH for batch lifecycle — races gated FE-side)."""
         if column not in JOB_ONLY_COLUMNS:
             raise ValueError(f"not a job-only remix column: {column!r}")
         sql = f"UPDATE remixes SET {column} = $2, updated_at = now() WHERE id = $1"

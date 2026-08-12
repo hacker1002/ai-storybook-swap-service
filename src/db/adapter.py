@@ -38,9 +38,10 @@ class AppDbAdapter(Protocol):
     async def snapshot_exists(self, snapshot_id: UUID) -> bool: ...
     async def insert_remix(self, row: dict) -> dict: ...
     async def update_remix_columns(self, remix_id: UUID, columns: dict) -> bool: ...  # False = rowcount 0
-    # P3b job handlers: single-writer full-column write of a JOB_ONLY column
-    # (`rmbgs`/`upscales`). Disjoint from the WRITABLE columns the editor PATCHes, so
-    # it is a SEPARATE seam guarded by JOB_ONLY_COLUMNS (never the WRITABLE set).
+    # P3b job handlers: full-column write of a JOB_ONLY column (`rmbgs`/`upscales`).
+    # SEPARATE seam guarded by JOB_ONLY_COLUMNS. NOT disjoint from WRITABLE — the
+    # editor also PATCHes these columns for batch lifecycle (see core/remix_columns.py);
+    # FE gating (useAnySwapRunning + dedup) prevents editor/job write races.
     async def update_remix_job_column(self, remix_id: UUID, column: str, value) -> bool: ...  # False = rowcount 0
     async def delete_remix(self, remix_id: UUID) -> bool: ...  # False = did not exist
 

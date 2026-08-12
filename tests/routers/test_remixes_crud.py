@@ -98,10 +98,21 @@ def test_update_remix_config_rejected(client, fake_adapter, auth_headers):
     assert r.json()["error"]["code"] == "COLUMN_NOT_WRITABLE"
 
 
-def test_update_job_only_rejected(client, fake_adapter, auth_headers):
+def test_update_stage_columns_writable(client, fake_adapter, auth_headers):
+    # rmbgs/upscales are client-writable: the FE remix-store owns batch lifecycle
+    # (addStageBatch et al.) for all 3 stage columns — jobs only write results.
     rid = _seed_remix(fake_adapter)
     r = client.patch(f"/api/editor/remixes/{rid}/columns",
-                     json={"columns": {"rmbgs": []}}, headers=auth_headers)
+                     json={"columns": {"rmbgs": [{"id": "b1"}], "upscales": []}},
+                     headers=auth_headers)
+    assert r.status_code == 200
+    assert sorted(r.json()["data"]["updated_columns"]) == ["rmbgs", "upscales"]
+
+
+def test_update_snapshot_id_rejected(client, fake_adapter, auth_headers):
+    rid = _seed_remix(fake_adapter)
+    r = client.patch(f"/api/editor/remixes/{rid}/columns",
+                     json={"columns": {"snapshot_id": str(uuid.uuid4())}}, headers=auth_headers)
     assert r.status_code == 400
     assert r.json()["error"]["code"] == "COLUMN_NOT_WRITABLE"
 

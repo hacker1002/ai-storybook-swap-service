@@ -1,10 +1,11 @@
 """PATCH /api/editor/remixes/{remix_id}/columns (spec 05).
 
-Whole-column, last-writer-wins, no lock (ADR-052). Any key outside the 7-column
-writable allowlist — including create-only `remix_config`, job-only `rmbgs`/
-`upscales`, or `id`/`snapshot_id` — REJECTS THE WHOLE REQUEST with 400
-COLUMN_NOT_WRITABLE (never silent-drop; FE would think it persisted). rowcount 0 ->
-404.
+Whole-column, last-writer-wins, no lock (ADR-052). Any key outside the 9-column
+writable allowlist — including create-only `remix_config` or `id`/`snapshot_id` —
+REJECTS THE WHOLE REQUEST with 400 COLUMN_NOT_WRITABLE (never silent-drop; FE
+would think it persisted). `rmbgs`/`upscales` ARE writable: the FE remix-store
+owns batch lifecycle (add/remove/import/relayout/takeFinalBack) client-side for
+all 3 stage columns (see core/remix_columns.py). rowcount 0 -> 404.
 """
 
 from __future__ import annotations

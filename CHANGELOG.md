@@ -16,6 +16,12 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
 | `POST /api/editor/auth/exchange` | Body 200 **PHẲNG** `{access_token, expires_in, admin_name?}` — endpoint editor-facing DUY NHẤT không bọc `{success,data}` envelope (error vẫn `{success,error}`) | Spec 00 + FE auth module đều viết phẳng; ADR-053 |
 
+## 2026-08-12 — `rmbgs`/`upscales` writable qua PATCH /columns (fix COLUMN_NOT_WRITABLE khi add batch)
+
+Spec 05 chốt 260810 loại `rmbgs`/`upscales` khỏi allowlist ("job-only, FE không có nhu cầu") — SAI: audit call-sites đếm sót các site dùng dynamic key `[stage]` trong remix-store (`addStageBatch`/`removeStageBatch`/`importStageBatch`/`relayoutStageBatchSheets`/`takeFinalBack`/`reconcileFinalsAfterMutation`). FE own batch LIFECYCLE client-side cho cả 3 stage columns; main editor không lộ bug vì `SupabaseRemixGateway` ghi thẳng RLS không allowlist. Sub-app add batch tab remove-bg → 400 `COLUMN_NOT_WRITABLE`.
+
+Fix: chuyển `rmbgs`/`upscales` vào `WRITABLE_REMIX_COLUMNS` (9 cột) — cùng dual-writer class với `mixes` (FE lifecycle + job results, race gated FE-side `useAnySwapRunning` + dedup). `JOB_ONLY_COLUMNS` giữ nguyên cho seam `update_remix_job_column` (hết disjoint với WRITABLE — by design). Create vẫn force `[]`. Spec 05 sync cùng đợt (REV 260812).
+
 ## 2026-08-12 — Storage REST shim: thêm `apikey` header (fix 400 Invalid Compact JWS)
 
 `SupabaseRestStorage._auth_headers` chỉ gửi `Authorization: Bearer <key>`. Với key format mới `sb_secret_...` (không phải JWT), gateway parse Bearer như JWS → 400 `Invalid Compact JWS` trên mọi upload/sign/delete (sprite-swap job fail `swapped=0 failed=1`). Fix: gửi kèm header `apikey: <key>` (giống supabase-py — lý do image-api không dính). Legacy JWT key không bị ảnh hưởng. Live-verified upload 200 trên local Supabase.
