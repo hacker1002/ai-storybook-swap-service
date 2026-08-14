@@ -7,3 +7,4 @@ __pycache__/
 # content) + local ids — never commit.
 test-scripts/fixtures/local-ids.env
 test-scripts/fixtures/remote-*.json
+scripts/media-migration-output/
