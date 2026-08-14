@@ -95,6 +95,11 @@ async def main() -> int:
     )
     skipped_urls: dict[str, str] = {}
     errors: list[dict] = []
+    total_urls = sum(
+        len(occ["urls"]) for occ in manifest["occurrences"]
+        if not table_filter or occ["table"] in table_filter
+    )
+    processed = 0
 
     conn = await asyncpg.connect(settings.app_db_url)
     try:
@@ -103,6 +108,14 @@ async def main() -> int:
                 continue
             stats = per_table[occ["table"]]
             for old_url in occ["urls"]:
+                processed += 1
+                if processed % 50 == 0 or processed == total_urls:
+                    logger.info(
+                        "progress %d/%d urls (table=%s) updated=%d skipped=%d",
+                        processed, total_urls, occ["table"],
+                        sum(t["updated"] for t in per_table.values()),
+                        sum(t["skipped_url"] for t in per_table.values()),
+                    )
                 parsed = parse_storage_url(old_url)
                 bid = blob_id(parsed["bucket"], parsed["key"])
                 result = transfer.get(bid) or {"status": "missing"}
