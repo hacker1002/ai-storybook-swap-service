@@ -7,6 +7,7 @@ Supabase SDK config here; DB access is direct asyncpg (`APP_DB_URL`).
 
 from functools import cached_property
 
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -65,7 +66,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:5173"
     port: int = 8100
 
-    # --- Storage (Supabase Storage REST via httpx — NO SDK) -----------------
+    # --- Storage (LEGACY Supabase Storage REST via httpx — NO SDK; rollback) --
+    # Used ONLY when the STORAGE_SERVICE_* cluster below is empty (ADR-054 switch).
     # Base Supabase URL (same host that serves /storage/v1/...). Local P3b:
     # http://127.0.0.1:54321. Optional at P3a boot; the storage adapter is only
     # exercised once a ported endpoint uploads (P3b).
@@ -80,6 +82,25 @@ class Settings(BaseSettings):
     # private-IP guard (local: "127.0.0.1:54321" so the service can re-fetch its
     # own Storage uploads). Empty in prod (public *.supabase.co resolves publicly).
     ssrf_allowed_hosts: str = ""
+
+    # --- Storage Service (ADR-054 — env-presence switch, mirrors image-api) ------
+    # PRESENCE-SWITCH: `storage_service_url` non-empty ⇒ every write/sign/delete goes
+    # through the self-hosted storage service (loopback S2S, `X-API-Key`) instead of
+    # Supabase Storage. All THREE empty ⇒ legacy Supabase path (the rollback state).
+    # The single `AppStorageAdapter` seam is unchanged — only the wired impl flips.
+    #   - `storage_service_url`      base for write/sign/delete S2S. LOOPBACK (prod
+    #                                127.0.0.1:8200). ⚠️ A public domain 403s writes
+    #                                (nginx proxies READ only) — never point this at it.
+    #   - `storage_service_api_key`  the `swap-service` key from the service STORAGE_API_KEYS
+    #   - `storage_public_base_url`  base to build persisted READ URLs
+    #                                `{base}/files/{bucket}/{key}` (public domain / nginx)
+    # Trailing slashes normalized off (field_validator) so `{base}/files/...` never
+    # double-slashes. HALF the cluster set (service_url without key/public base) is a
+    # FAIL-FAST at boot (model_validator) — a silent legacy fallback would leave prod
+    # "thinking it cut over while still writing Supabase". Rollback = clear ALL three.
+    storage_service_url: str = ""
+    storage_service_api_key: str = ""
+    storage_public_base_url: str = ""
 
     # --- AI (optional at P3a, REQUIRED at P3b) ------------------------------
     google_cloud_project: str = ""
@@ -96,6 +117,42 @@ class Settings(BaseSettings):
     langchain_project: str = "remix-swap-service"
     langchain_tracing_v2: str = ""
     langchain_endpoint: str = ""
+
+    @field_validator(
+        "storage_service_url",
+        "storage_public_base_url",
+        mode="after",
+    )
+    @classmethod
+    def _strip_storage_url_slash(cls, v: str) -> str:
+        """Normalize storage base URLs: strip surrounding whitespace + trailing `/`
+        so `{base}/files/{bucket}/{key}` never produces a `//files/`."""
+        return (v or "").strip().rstrip("/")
+
+    @model_validator(mode="after")
+    def _validate_storage_service_cluster(self) -> "Settings":
+        """FAIL-FAST (ADR-054): if the storage service is switched ON
+        (`storage_service_url` set) but the cluster is only HALF configured, refuse
+        to boot. A silent legacy fallback would let prod believe it cut over while
+        still writing Supabase. Rollback = clear the WHOLE cluster (all three empty)."""
+        if self.storage_service_url:
+            missing = [
+                name
+                for name, val in (
+                    ("STORAGE_SERVICE_API_KEY", self.storage_service_api_key),
+                    ("STORAGE_PUBLIC_BASE_URL", self.storage_public_base_url),
+                )
+                if not (val or "").strip()
+            ]
+            if missing:
+                raise ValueError(
+                    "STORAGE_SERVICE_URL is set but "
+                    f"{', '.join(missing)} is empty — the storage-service cluster is "
+                    "half-configured. Set all of STORAGE_SERVICE_URL / "
+                    "STORAGE_SERVICE_API_KEY / STORAGE_PUBLIC_BASE_URL, or clear ALL "
+                    "three to run the legacy Supabase Storage path (ADR-054)."
+                )
+        return self
 
     @cached_property
     def ssrf_allowed_hosts_list(self) -> list[str]:

@@ -24,22 +24,19 @@ import logging
 
 import httpx
 
+# StorageUploadError now lives in the backend-neutral `errors.py` (ADR-054 —
+# shared with `storage_service_rest.py`). Re-exported here so the cores' + shim's
+# `from src.storage.supabase_rest import StorageUploadError` keeps working.
+from src.storage.errors import StorageUploadError
+
+__all__ = ["StorageUploadError", "SupabaseRestStorage"]
+
 logger = logging.getLogger(__name__)
 
 # Transient transport failures retry; a 4xx/5xx API error (bucket-not-found,
 # auth) is never retried. Backoff sleeps before attempt 2, then attempt 3.
 _UPLOAD_MAX_ATTEMPTS = 3
 _UPLOAD_RETRY_BACKOFF_S = (0.5, 1.5)
-
-
-class StorageUploadError(Exception):
-    """Raised when a Supabase Storage write fails. Handler maps to 500."""
-
-    def __init__(self, path: str, bucket: str, reason: str) -> None:
-        super().__init__(f"Storage op failed bucket={bucket} path={path}: {reason}")
-        self.path = path
-        self.bucket = bucket
-        self.reason = reason
 
 
 class SupabaseRestStorage:

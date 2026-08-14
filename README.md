@@ -44,7 +44,7 @@ no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 
 **Infrastructure** (all *-swap-service scoped):
 - In-process jobs lib: `AsyncJobRunner` + `JobReaper` (stale job cleanup scoped to `source='remix-swap-service'`)
-- Content-addressed storage (CAS) adapter: httpx REST to Supabase Storage bucket `storybook-assets`
+- Storage adapter: single `AppStorageAdapter` seam over bucket `storybook-assets`; env-presence switch (ADR-054) between the self-hosted storage service (httpx S2S → `:8200`) and legacy Supabase Storage REST (rollback)
 - Global Replicate semaphore + version pins (prevent burst overload)
 - AI call layer: Gemini via `gemini_ainvoke` (ADC-Vertex), Replicate SDK
 - Cost attribution: `ai_service_logs` with `request.audit={admin_ref,sid,source:"remix-swap-service"}` + `remix_id` key; `user_id` always NULL (service account)
@@ -90,7 +90,7 @@ Unlike `ai-storybook-image-api` (which this is a fork of), the Remix Swap Servic
 - **AI cost logging**: `ai_service_logs.user_id` always NULL; request audit nests into `request.audit={admin_ref,sid,source:"remix-swap-service"}` JSONB. Attribution key is `remix_id`, not `book_id`
 - **Job reaper scoping**: `list_stale_jobs` filters to `source='remix-swap-service'` (shared `background_jobs` table with image-api — must not reclaim image-api's jobs without their finalize hooks)
 - **Mix-swap dedup**: Returns **409 Conflict** (image-api returns 200 deduped); other detectors (detect-mix, detect-rmbg) return 409; sprite/audio/rmbg/upscale/detect-sprite → 200 deduped. FE sub-app must treat mix-swap 409 as a normal dedup response
-- **Storage**: httpx REST to Supabase Storage (no `supabase-py` SDK)
+- **Storage**: single `AppStorageAdapter` seam; env-presence switch (ADR-054) — httpx S2S to the self-hosted storage service (`/files/{bucket}/{key}` read shape) when `STORAGE_SERVICE_URL` is set, else legacy Supabase Storage REST (rollback). No `supabase-py` SDK either way
 - **LangSmith project**: `remix-swap-service` (separate from image-api)
 - **Remix sync routes** (`/api/remix/*`): internal/test only; keep image-api `RemixDomainError` envelope (no FE consumer today)
 - **Exchange response body** (`POST /api/editor/auth/exchange`): FLAT `{access_token, expires_in, admin_name?}` — the ONLY editor-facing endpoint that does NOT use the `{success,data}` envelope (spec 00 + FE auth module both specify flat). Error paths keep the `{success,error}` envelope.
@@ -147,3 +147,24 @@ Notes / gotchas:
 
 - **Narrow DB role.** Dev uses the `postgres` superuser (bypasses RLS; all authz
   is app-layer). Create a limited role with table-scoped grants for shared/staging.
+
+## Storage cutover — deploy / rollback (ADR-054)
+
+The storage backend is chosen at boot by env presence (`build_storage_adapter`).
+Startup logs the chosen backend: `storage_backend=storage_service|supabase_legacy`.
+
+- **Deploy (single deploy — env + code together):** ship the code and set the 3 vars
+  `STORAGE_SERVICE_URL` (LOOPBACK `127.0.0.1:8200`), `STORAGE_SERVICE_API_KEY`
+  (`swap-service` key), `STORAGE_PUBLIC_BASE_URL` (public domain / nginx) in the SAME
+  deploy → restart (`workers=1`) → confirm the log line `storage_backend=storage_service`
+  → smoke one upload → verify the object on disk under the storage service's
+  `STORAGE_ROOT/{bucket}/{key}`. Boot fails fast if the cluster is half-configured —
+  that is intentional; re-check the 3 vars.
+- **Rollback:** clear **ALL THREE** `STORAGE_SERVICE_*` vars (half = boot fail by
+  design) → restart → back on Supabase (`APP_STORAGE_*`). ⚠️ Objects written to the
+  storage service during the ON window do NOT migrate back, and URLs already persisted
+  in JSONB keep pointing at `/files/...` — keep the storage service alive to serve reads.
+- ⚠️ **Never point `STORAGE_SERVICE_URL` at the public domain** — nginx proxies READ
+  only, so every write would 403. Loopback for writes, domain for reads.
+- **Pending (separate one-shot, ADR-054 §6):** rewrite legacy Supabase URLs already in
+  the DB to `/files/...`. Reads tolerate both until then.

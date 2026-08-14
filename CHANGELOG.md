@@ -16,6 +16,26 @@ Nơi chính thức ghi **divergence nội bộ** so với image-api theo spec 08
 | `GET /api/editor/actors` | Endpoint MỚI editor-native (image-api không có) — read-only `actors` rows theo `snapshot_id`, no pipeline-completeness filter | Spec 10; casting resolve phía App (chốt 260812) — sub-app materialize client-side lúc create-remix |
 | `POST /api/editor/auth/exchange` | Body 200 **PHẲNG** `{access_token, expires_in, admin_name?}` — endpoint editor-facing DUY NHẤT không bọc `{success,data}` envelope (error vẫn `{success,error}`) | Spec 00 + FE auth module đều viết phẳng; ADR-053 |
 
+## 2026-08-14 — Storage cutover sang self-hosted storage service (ADR-054)
+
+Mirror env-presence switch đã ship ở image-api (2026-08-14). Cutover đi qua đúng 1 seam
+`AppStorageAdapter` — **KHÔNG sửa call site nào** (~19 upload đều qua `services/storage.py::upload_bytes`).
+
+- **Mới**: `src/storage/storage_service_rest.py` (`StorageServiceRestStorage` — httpx **async** S2S
+  `X-API-Key` → `:8200`; PUT/sign/delete; `data.url` là nguồn sự thật; retry transport 3 lần,
+  attempt ≥2 ép `upsert=true`; delete best-effort). `src/storage/errors.py`
+  (`StorageUploadError` neutral + field `status_code` optional, additive). `src/storage/factory.py`
+  (`build_storage_adapter` — presence-switch tại wiring, log backend đang dùng).
+- **Sửa**: `supabase_rest.py` re-export `StorageUploadError` (giữ import cũ, 1 định nghĩa — no `is`-drift);
+  `config/settings.py` 3 env `STORAGE_SERVICE_URL/_API_KEY` + `STORAGE_PUBLIC_BASE_URL` + strip-slash
+  validator + fail-fast half-config `model_validator`; `main.py` lifespan dùng factory.
+- **Switch**: set cụm env → write/sign/delete qua storage service; xoá SẠCH cả 3 → legacy Supabase (rollback).
+  URL đọc đổi shape sang `{public_base}/files/{bucket}/{key}` (bucket `storybook-assets` giữ nguyên).
+  Write phải LOOPBACK (domain công khai 403 write — nginx chỉ proxy read).
+- **KHÔNG đổi contract/response** của bất kỳ endpoint nào. Tests: 17 unit mới
+  (`tests/storage/`) + live verified (upload → `/files/` URL + file trên disk storage service).
+- Còn nợ (plan riêng, ADR-054 §6): rewrite URL Supabase cũ trong JSONB → `/files/`.
+
 ## 2026-08-12 — AI log row `id` client-mint (khôi phục parity image-api, đảo divergence P3b)
 
 P3b chốt "DB mints `ai_service_logs.id`" — hệ quả ngầm: `rid = new_request_id()` mà gemini/replicate/upscale mint trước provider call và surface làm `ai_request_id`/`data.aiRequestId` trong envelope KHÔNG khớp row id nào trong DB (envelope id không tra ngược được — inconsistency chờ nổ khi debug/provenance). Khôi phục cơ chế image-api:

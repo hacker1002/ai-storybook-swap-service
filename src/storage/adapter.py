@@ -5,8 +5,10 @@ The single Storage surface of the service. Every module imports the
 `set_storage(FakeAppStorageAdapter())` — mirrors `src/db/adapter.py` 1:1 (one
 accessor, not per-module get-client).
 
-Boundary: NO Supabase SDK. The concrete impl (`supabase_rest.SupabaseRestStorage`)
-speaks Supabase Storage REST over httpx.
+Boundary: NO Supabase SDK. Two concrete impls, chosen at wiring by env presence
+(`storage/factory.build_storage_adapter`, ADR-054): `StorageServiceRestStorage`
+(httpx S2S → self-hosted storage service `:8200`) or, as the rollback path,
+`supabase_rest.SupabaseRestStorage` (Supabase Storage REST over httpx).
 """
 
 from __future__ import annotations

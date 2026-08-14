@@ -40,7 +40,7 @@ from src.services.ai_usage.logger import drain as drain_ai_logs
 from src.services.image.errors import ImageDomainError
 from src.services.remix.errors import RemixDomainError
 from src.storage.adapter import set_storage
-from src.storage.supabase_rest import SupabaseRestStorage
+from src.storage.factory import build_storage_adapter
 
 configure_logging()
 logger = get_logger("main")
@@ -79,15 +79,10 @@ async def lifespan(_app: FastAPI):
         )
     pool = await create_pool()
     set_adapter(PostgresAppDbAdapter(pool))
-    # Storage seam: Supabase Storage REST over httpx (NO SDK). Construction is
-    # I/O-free (URL/key only) — actual writes happen in P3b ported endpoints.
-    set_storage(
-        SupabaseRestStorage(
-            base_url=settings.app_storage_url,
-            service_key=settings.app_storage_service_key,
-            default_bucket=settings.app_storage_bucket,
-        )
-    )
+    # Storage seam (ADR-054 env-presence switch): storage service (loopback S2S) when
+    # STORAGE_SERVICE_URL is set, else legacy Supabase Storage REST (rollback). The
+    # factory logs the chosen backend; construction is I/O-free (URL/key only).
+    set_storage(build_storage_adapter(settings))
     # Startup guard: background_jobs.user_id is a NOT NULL FK -> auth.users. Verify
     # the configured service user exists before accepting job enqueues. Enforced
     # only when the value is set (unit tests leave it empty -> still boots).
