@@ -11,4 +11,4 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-exec uv run uvicorn src.main:app --host 0.0.0.0 --port "${PORT:-8100}" --workers 1
+exec uv run uvicorn src.main:app --host 0.0.0.0 --port "${PORT:-3202}" --workers 1
