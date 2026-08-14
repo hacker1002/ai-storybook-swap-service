@@ -11,6 +11,7 @@ import httpx
 from fastapi import HTTPException
 
 from src.services.ssrf_guard import validate_public_url
+from src.storage.internal_read import to_fetch_url
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +26,22 @@ async def fetch_image_bytes(
 
     Returns (bytes, content_type). Raises HTTPException on failure.
     """
+    # SSRF-guard the ORIGINAL (user-supplied) URL, THEN optionally rewrite it to the
+    # internal loopback-read base (ADR-054, parity image-api). The rewrite is trusted
+    # (ops-configured prefix on top of an already-validated public URL) so it bypasses
+    # the private-IP guard; no-op when STORAGE_INTERNAL_READ_BASE_URL is empty.
     validate_public_url(url)
+    fetch_url = to_fetch_url(url)
+    if fetch_url != url:
+        logger.debug("fetch_internal_rewrite host_from=%s host_to=%s", _host(url), _host(fetch_url))
 
     timeout = httpx.Timeout(timeout_s)
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            async with client.stream("GET", url) as resp:
-                # Re-validate final URL after redirects
+            async with client.stream("GET", fetch_url) as resp:
+                # Re-validate final URL after redirects (against the URL we actually hit)
                 final_url = str(resp.url)
-                if final_url != url:
+                if final_url != fetch_url:
                     validate_public_url(final_url)
 
                 if resp.status_code >= 400:

@@ -101,6 +101,13 @@ class Settings(BaseSettings):
     storage_service_url: str = ""
     storage_service_api_key: str = ""
     storage_public_base_url: str = ""
+    # Optional loopback-nginx base to READ blob bytes back (ADR-054, mirrors
+    # image-api — prod-proven there): when set, `to_fetch_url()` rewrites a
+    # persisted `{storage_public_base_url}/files/...` URL to this base at
+    # fetch-time (combine-sheet re-fetch, audio chunks, ...) so reads skip the
+    # public-domain egress hop. Empty = no rewrite. NOT part of the fail-fast
+    # trio — purely additive; nothing rewritten is ever persisted.
+    storage_internal_read_base_url: str = ""
 
     # --- AI (optional at P3a, REQUIRED at P3b) ------------------------------
     google_cloud_project: str = ""
@@ -121,6 +128,7 @@ class Settings(BaseSettings):
     @field_validator(
         "storage_service_url",
         "storage_public_base_url",
+        "storage_internal_read_base_url",
         mode="after",
     )
     @classmethod

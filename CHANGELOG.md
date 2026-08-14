@@ -36,6 +36,16 @@ Mirror env-presence switch đã ship ở image-api (2026-08-14). Cutover đi qua
   (`tests/storage/`) + live verified (upload → `/files/` URL + file trên disk storage service).
 - Còn nợ (plan riêng, ADR-054 §6): rewrite URL Supabase cũ trong JSONB → `/files/`.
 
+### Bổ sung cùng ngày — internal-read rewrite (parity image-api, prod-proven ở image-api)
+
+- **Mới**: `src/storage/internal_read.py::to_fetch_url` (port từ image-api `storage_hosts.to_fetch_url`) +
+  env optional `STORAGE_INTERNAL_READ_BASE_URL` (strip-slash validator; KHÔNG thuộc fail-fast trio).
+- **Hook**: `services/http_fetch.py::fetch_image_bytes` — validate URL gốc TRƯỚC, rewrite SAU
+  (rewrite = ops-trusted, bypass private-IP guard); phủ luôn audio path (`audio_fetch` delegate qua
+  `fetch_image_bytes`). Set env → mọi re-fetch server-side của URL `/files/` (compose crop-sheet,
+  combine audio chunks, upscale source) đi loopback-nginx thay vì egress domain công khai.
+  Env rỗng = no-op (không rewrite). Không có gì rewrite được persist.
+
 ## 2026-08-12 — AI log row `id` client-mint (khôi phục parity image-api, đảo divergence P3b)
 
 P3b chốt "DB mints `ai_service_logs.id`" — hệ quả ngầm: `rid = new_request_id()` mà gemini/replicate/upscale mint trước provider call và surface làm `ai_request_id`/`data.aiRequestId` trong envelope KHÔNG khớp row id nào trong DB (envelope id không tra ngược được — inconsistency chờ nổ khi debug/provenance). Khôi phục cơ chế image-api:
