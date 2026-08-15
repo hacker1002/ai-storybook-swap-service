@@ -1,6 +1,6 @@
 """POST /api/image/upscale-image handler (P3c port — thin HTTP wrapper).
 
-Ported from `ai-storybook-image-api/src/routers/image/upscale_image.py`. Maps
+Ported from `ai-storybook-python-api/src/routers/image/upscale_image.py`. Maps
 `UpscaleImageParams` → `UpscaleCoreRequest` → `run_upscale` → spec envelope. The
 upscale CORE (`run_upscale`, per-model adapters, tile mode) was already ported in
 P3b for the `remix_upscale` job — this route reuses it verbatim (DRY, no second copy).

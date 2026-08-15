@@ -46,7 +46,7 @@ _BADGE_RADIUS = 4
 _MIN_ORDINAL_FONT_PX = 8  # sàn khi giảm font cục bộ cho vừa cap
 
 # Vendored bold TTF — default PIL bitmap font không scale theo font_px.
-# parents[3] = ai-storybook-image-api/ (file: src/services/remix/crop_sheet_composer.py).
+# parents[3] = ai-storybook-python-api/ (file: src/services/remix/crop_sheet_composer.py).
 _FONT_PATH = (
     Path(__file__).resolve().parents[3] / "assets" / "fonts" / "DejaVuSans-Bold.ttf"
 )

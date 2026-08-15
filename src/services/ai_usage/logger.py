@@ -1,6 +1,6 @@
 """`AiLogEntry` + the ONE fire-and-forget insert path into `ai_service_logs`.
 
-Ported from `ai-storybook-image-api/src/services/ai_usage/logger.py`. Only the DB
+Ported from `ai-storybook-python-api/src/services/ai_usage/logger.py`. Only the DB
 write path changed — everything else (sanitize-at-choke, cost dict shape, ref/output
 blob attach) is preserved. Divergences forced by this service's seams:
 

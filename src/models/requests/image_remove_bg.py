@@ -1,6 +1,6 @@
 """Core-layer models + constants for the Bria/851-labs remove-background core (P3b).
 
-Ported from `ai-storybook-image-api/src/models/requests/image_remove_bg.py`. In
+Ported from `ai-storybook-python-api/src/models/requests/image_remove_bg.py`. In
 this service only the CORE contract is exercised — by `routers/retouch/
 image_remove_bg.py::image_remove_bg_core` (the `remix_rmbg` job's per-sheet
 remove-bg call, `return_bytes=True`) and by `services/replicate_client.run_remove_bg`

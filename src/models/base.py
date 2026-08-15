@@ -1,6 +1,6 @@
 """Base Pydantic model configuration for ported models.
 
-Ported from `ai-storybook-image-api/src/models/base.py` so the remix job enqueue
+Ported from `ai-storybook-python-api/src/models/base.py` so the remix job enqueue
 models (which subclass `FlexibleModel`) stay byte-identical after the P3b port.
 """
 

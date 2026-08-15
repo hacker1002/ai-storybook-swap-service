@@ -1,6 +1,6 @@
 """Pydantic models + constants for the upscale core (P3b port).
 
-Ported from `ai-storybook-image-api/src/models/requests/upscale_image.py`. In this
+Ported from `ai-storybook-python-api/src/models/requests/upscale_image.py`. In this
 service ONLY the CORE contract (`UpscaleCoreRequest`/`Result`), the grain models,
 and the module constants are exercised — by `services/image/upscale_core.py` +
 the `remix_upscale` job handler. The public HTTP layer models are kept verbatim

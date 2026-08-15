@@ -1,6 +1,6 @@
 """POST /api/retouch/edit-object-image — Gemini image editing + App Storage upload (P3c port).
 
-Ported from `ai-storybook-image-api/src/routers/retouch/edit_object_image.py`. Step
+Ported from `ai-storybook-python-api/src/routers/retouch/edit_object_image.py`. Step
 order is VERBATIM (validate → fetch refs → build parts → `gemini_ainvoke` → parse →
 upload → response); only the SEAMS change:
   - AUTH: editor-session Bearer at the router group level (NOT X-API-Key). The

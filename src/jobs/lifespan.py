@@ -1,6 +1,6 @@
 """Lifespan helpers — `wait_all` drains in-flight handler tasks during shutdown.
 
-Ported verbatim from `ai-storybook-image-api/src/jobs/lifespan.py` (no DB — reads
+Ported verbatim from `ai-storybook-python-api/src/jobs/lifespan.py` (no DB — reads
 the runner's strong-ref `_TASKS` set only).
 """
 

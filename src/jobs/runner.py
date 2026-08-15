@@ -1,6 +1,6 @@
 """Job runner — registry, enqueue, JobContext, internal lifecycle.
 
-Ported from `ai-storybook-image-api/src/jobs/runner.py`. THE ONLY change is the
+Ported from `ai-storybook-python-api/src/jobs/runner.py`. THE ONLY change is the
 I/O seam: every `sb.table("background_jobs")...` Supabase call becomes a
 `get_adapter().*` asyncpg call. The state machine, the CAS ordering, the
 finalize-before-status ordering, the per-type semaphore, and the strong-ref

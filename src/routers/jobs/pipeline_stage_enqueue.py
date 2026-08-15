@@ -1,7 +1,7 @@
 """Shared enqueue flow for the crop-pipeline STAGE jobs (remix rmbg 09 · upscale 10)
 — `POST /api/jobs/remix/{remix_id}/{rmbg|upscale}`.
 
-Ported from `ai-storybook-image-api/src/routers/jobs/pipeline_stage_enqueue.py`
+Ported from `ai-storybook-python-api/src/routers/jobs/pipeline_stage_enqueue.py`
 with the P3b seam swaps (README §7 delta):
   - `sb.table(...)` → `get_adapter()` (asyncpg AppDbAdapter). The image-api actor
     path (`table="actors"`) is out of scope here; the `table` arg stays for

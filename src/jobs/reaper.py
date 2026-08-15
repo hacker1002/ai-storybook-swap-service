@@ -1,6 +1,6 @@
 """Reaper — sweeps stale running/queued jobs.
 
-Ported from `ai-storybook-image-api/src/jobs/reaper.py`. The image-api version
+Ported from `ai-storybook-python-api/src/jobs/reaper.py`. The image-api version
 issued TWO bulk conditional `UPDATE ... RETURNING` calls (PostgREST). asyncpg has
 no single-statement bulk-CAS-with-representation, so the equivalent here is:
 

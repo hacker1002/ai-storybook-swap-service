@@ -1,6 +1,6 @@
 """Pydantic models + constants for POST /api/retouch/edit-object-image (P3c port).
 
-Ported VERBATIM from `ai-storybook-image-api/src/models/requests/edit_object_image.py`.
+Ported VERBATIM from `ai-storybook-python-api/src/models/requests/edit_object_image.py`.
 Gemini image editing with persistent Storage upload. In this service the public
 HTTP layer IS mounted (unlike the rmbg/upscale core-only ports) — the remix
 sub-app's Inpaint tab calls this endpoint. Auth is editor-session Bearer at the

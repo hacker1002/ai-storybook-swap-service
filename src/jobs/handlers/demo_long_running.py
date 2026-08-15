@@ -1,6 +1,6 @@
 """Demo handler `demo_long_running` — exercises the lib contract end-to-end.
 
-Ported from `ai-storybook-image-api/src/jobs/handlers/demo_long_running.py`. No
+Ported from `ai-storybook-python-api/src/jobs/handlers/demo_long_running.py`. No
 AI, no real I/O — only `ctx.report` / `ctx.check_cancel` — so it validates the
 enqueue → running CAS → report → terminal CAS + cooperative-cancel paths against
 the asyncpg adapter without any upstream dependency.

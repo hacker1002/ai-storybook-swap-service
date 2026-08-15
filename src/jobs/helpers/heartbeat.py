@@ -1,6 +1,6 @@
 """Keep-alive heartbeat for long single-`await` worker calls.
 
-Ported from `ai-storybook-image-api/src/jobs/helpers/heartbeat.py`. Pure — no DB
+Ported from `ai-storybook-python-api/src/jobs/helpers/heartbeat.py`. Pure — no DB
 seam of its own; it drives `ctx.report(...)` (which goes through the adapter).
 Only the settings import differs (this service's `settings.job_heartbeat_sec`).
 

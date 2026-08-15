@@ -1,6 +1,6 @@
 """Domain errors for image core services.
 
-Ported VERBATIM from `ai-storybook-image-api/src/services/image/errors.py` (P3b).
+Ported VERBATIM from `ai-storybook-python-api/src/services/image/errors.py` (P3b).
 
 Raised by `upscale_core.run_upscale()` instead of HTTPException so callers — the
 in-process job handler (ADR-031) — decide how to surface the failure. In this

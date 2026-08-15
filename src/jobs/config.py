@@ -1,6 +1,6 @@
 """Hardcoded configuration constants for the background-job lib.
 
-Ported from `ai-storybook-image-api/src/jobs/config.py`. Per Validation Session 1
+Ported from `ai-storybook-python-api/src/jobs/config.py`. Per Validation Session 1
 (plan 260515-1011): no env vars. Tune = code change + deploy. KISS for v1.
 
 The semaphore caps + reaper thresholds are load-bearing (they encode real upstream

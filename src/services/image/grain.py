@@ -1,6 +1,6 @@
 """Monochrome watercolor-paper grain post-process (pure numpy + Pillow).
 
-Ported VERBATIM from `ai-storybook-image-api/src/services/image/grain.py` (P3b).
+Ported VERBATIM from `ai-storybook-python-api/src/services/image/grain.py` (P3b).
 Model-agnostic CPU transform applied AFTER upscale (on output bytes — never
 forwarded to Replicate). Alpha-preserving (splits alpha, adds noise to RGB only,
 recombines), PNG output. Callers MUST guard `GRAIN_MAX_PIXELS` + wrap in

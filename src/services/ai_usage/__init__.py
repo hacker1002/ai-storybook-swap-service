@@ -1,6 +1,6 @@
 """AI-usage logging layer for the Remix Swap Service.
 
-Ported from `ai-storybook-image-api/src/services/ai_usage/*` (Phase 03,
+Ported from `ai-storybook-python-api/src/services/ai_usage/*` (Phase 03,
 `plans/260810-1811-remix-swap-p3b-jobs-pipeline-port/phase-03-ai-usage-logging-port.md`).
 
 Fidelity: `pricing.py` + `sanitize.py` are pure logic ported verbatim (versioned

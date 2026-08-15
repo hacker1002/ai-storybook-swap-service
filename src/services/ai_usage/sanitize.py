@@ -1,6 +1,6 @@
 """Request/response sanitizers + reference-file lift for the AI log.
 
-Ported from `ai-storybook-image-api/src/services/ai_usage/sanitize.py`. The
+Ported from `ai-storybook-python-api/src/services/ai_usage/sanitize.py`. The
 sanitizer core (secret/base64 scrub, `extract_ref_blobs`/`extract_output_blobs`
 lift, `_sniff_mime` magic sniff) is VERBATIM. ONE forced divergence: this service
 has no synchronous content-addressed Storage lib (`persist_sync`), so

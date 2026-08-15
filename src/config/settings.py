@@ -1,6 +1,6 @@
 """Application settings loaded from environment variables (Pydantic Settings).
 
-Boundary vs `ai-storybook-image-api`: this service is a DELIBERATE BE-layer fork
+Boundary vs `ai-storybook-python-api`: this service is a DELIBERATE BE-layer fork
 (ADR-052). It shares NO code with image-api — only the API contract. There is NO
 Supabase SDK config here; DB access is direct asyncpg (`APP_DB_URL`).
 """

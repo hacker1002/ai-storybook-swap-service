@@ -1,6 +1,6 @@
 """Cost pricing tables + `compute_cost` for the AI-usage log.
 
-Ported VERBATIM from `ai-storybook-image-api/src/services/ai_usage/pricing.py`
+Ported VERBATIM from `ai-storybook-python-api/src/services/ai_usage/pricing.py`
 (2026-07-23 pricing table — do NOT alter the numbers; a divergence would misbill
 and break cross-service rollup comparability).
 

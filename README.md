@@ -1,7 +1,7 @@
 # Remix Swap Service
 
 Editor-session gateway for the **Remix Editor sub-app** (ADR-052). A deliberate
-backend-layer fork of `ai-storybook-image-api` — it shares **no code**, only the
+backend-layer fork of `ai-storybook-python-api` — it shares **no code**, only the
 API contract. Stack: **Python 3.12 + uv + FastAPI + asyncpg** (no Supabase SDK,
 no PostgREST). Runs on **port 8100** so it can run alongside image-api (8000).
 
@@ -84,7 +84,7 @@ uv run python scripts/mint_dev_editor_token.py --mode handoff            # raw a
 
 ## Deliberate Divergences from image-api
 
-Unlike `ai-storybook-image-api` (which this is a fork of), the Remix Swap Service intentionally diverges:
+Unlike `ai-storybook-python-api` (which this is a fork of), the Remix Swap Service intentionally diverges:
 
 - **Auth**: Bearer editor-session JWT (`aud=remix-editor`), NOT `X-API-Key` header
 - **AI cost logging**: `ai_service_logs.user_id` always NULL; request audit nests into `request.audit={admin_ref,sid,source:"remix-swap-service"}` JSONB. Attribution key is `remix_id`, not `book_id`

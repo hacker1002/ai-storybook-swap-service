@@ -1,6 +1,6 @@
 """Cross-batch `is_final` mutex helper for the remix mix-swap job (R1).
 
-Ported VERBATIM from `ai-storybook-image-api/src/jobs/helpers/promote_is_final.py`
+Ported VERBATIM from `ai-storybook-python-api/src/jobs/helpers/promote_is_final.py`
 — pure (mutates its `mixes` argument in-place, does NO I/O), so no seam change.
 
 Invariant (steady state): for every layer position `(spread_id, id)` that has

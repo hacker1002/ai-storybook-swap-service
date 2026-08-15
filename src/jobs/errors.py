@@ -1,6 +1,6 @@
 """Structured handler error — appended to `result.errors[]` per spec 00 §3.6.
 
-Ported verbatim from `ai-storybook-image-api/src/jobs/errors.py` (no DB, no
+Ported verbatim from `ai-storybook-python-api/src/jobs/errors.py` (no DB, no
 Supabase — pure dataclass). Kept identical so the job `result` envelope is
 byte-for-byte compatible across the two services.
 """

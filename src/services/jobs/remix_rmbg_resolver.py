@@ -1,6 +1,6 @@
 """Shared resolver — remix `rmbgs[]` row → bodies for the rmbg crop pipeline.
 
-Ported VERBATIM from `ai-storybook-image-api/src/services/jobs/remix_rmbg_resolver.py`
+Ported VERBATIM from `ai-storybook-python-api/src/services/jobs/remix_rmbg_resolver.py`
 (P3b). PURE — no DB/storage/logging — so it is copied byte-for-byte (no seam swap).
 
 ONE place that projects a `remixes.rmbgs[]` crop sheet into the shapes both rmbg
