@@ -1,0 +1,18 @@
+# Prod compose — run from repo root: TAG=<sha> docker compose -f deploy/compose.yml up -d
+# network_mode: host — uvicorn binds 127.0.0.1:3202, served by host nginx.
+# Stateless: env + GCP credential live on the host, logs go to host journald.
+services:
+  swap-service:
+    image: swap-service:${TAG:?set TAG to the image tag to run}
+    container_name: swap-service
+    network_mode: host
+    restart: unless-stopped
+    env_file: /home/tbng84/Projects/AI-Story-Book/ai-storybook-swap-service/.env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-adc.json
+    volumes:
+      - /home/tbng84/Projects/AI-Story-Book/ai-storybook-swap-service/gcp-adc.json:/secrets/gcp-adc.json:ro
+    logging:
+      driver: journald
+      options:
+        tag: swap-service

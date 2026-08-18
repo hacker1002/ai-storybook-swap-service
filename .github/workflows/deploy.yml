@@ -1,0 +1,22 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or SHA to deploy"
+        default: "main"
+
+concurrency:
+  group: deploy-swap-service
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, prod-server]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - run: ./deploy/deploy.sh
